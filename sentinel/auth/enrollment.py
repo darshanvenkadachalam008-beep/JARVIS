@@ -240,6 +240,10 @@ class EnrollmentManager:
         if not provided_token or not self.presence_file.exists():
             return False
 
+        if os.path.islink(self.presence_file):
+            self._emit_event("presence_token_symlink_rejected", {"path": str(self.presence_file)})
+            return False
+
         # Open file descriptor first to prevent TOCTOU swapping
         flags = os.O_RDONLY
         if hasattr(os, "O_NOFOLLOW"):
