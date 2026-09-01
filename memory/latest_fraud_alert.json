@@ -1,0 +1,13 @@
+{
+  "assigned_to": "analyst1",
+  "case_id": "TEST-001",
+  "reasons": [
+    "manual test"
+  ],
+  "risk_score": 95.0,
+  "severity": "CRITICAL",
+  "source": "manual-test",
+  "transaction_id": "TXN-1",
+  "ts": "2026-07-16 12:00:00",
+  "user_id": "USR-1"
+}

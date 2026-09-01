@@ -1,0 +1,54 @@
+name: Security & Test CI Gate
+
+"on":
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  test-and-verify:
+    name: Run Full Security Test Suite & Integrity Gate
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio
+
+      - name: Run Full Security Test Suite
+        id: run_tests
+        run: |
+          python -m pytest -v --tb=short
+
+      - name: Generate Security Status Dashboard
+        if: always()
+        run: |
+          python -m core.security_status
+
+      - name: Upload Security Dashboard Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-dashboard-report
+          path: memory/security_dashboard.html
+          if-no-files-found: ignore
+
+      - name: Publish Test Summary
+        if: always()
+        run: |
+          echo "## Security Gate Execution Summary" >> $env:GITHUB_STEP_SUMMARY
+          echo "* **Platform**: Windows Server (windows-latest)" >> $env:GITHUB_STEP_SUMMARY
+          echo "* **Python Version**: 3.10" >> $env:GITHUB_STEP_SUMMARY
+          echo "* **Gate Status**: ${{ steps.run_tests.outcome }}" >> $env:GITHUB_STEP_SUMMARY

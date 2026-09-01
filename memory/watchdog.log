@@ -1,0 +1,197 @@
+[2026-08-28 13:27:36] 👀 Intentional-exit marker cleared — resuming normal monitoring
+[2026-08-28 13:32:08] 🔁 Restarting JARVIS — reason: heartbeat stale (45s old, limit 45s)
+[2026-08-28 13:32:09] 🧹 Removed stale single-instance lock file
+[2026-08-28 13:32:11] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-28 21:58:34] 🐕 JARVIS watchdog started
+[2026-08-28 21:58:35] 🔁 Restarting JARVIS — reason: heartbeat stale (30318s old, limit 45s)
+[2026-08-28 21:58:36] 🧹 Removed stale single-instance lock file
+[2026-08-28 21:58:39] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-28 22:00:39] 😴 Intentional quit detected — standing down, will not auto-restart
+[2026-08-28 22:01:28] 👀 Intentional-exit marker cleared — resuming normal monitoring
+[2026-08-28 22:08:33] 🔁 Restarting JARVIS — reason: heartbeat stale (57s old, limit 45s)
+[2026-08-28 22:08:40] 🔪 Killed stray process PID 2084 holding a JARVIS port
+[2026-08-28 22:08:40] 🧹 Removed stale single-instance lock file
+[2026-08-28 22:08:43] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-28 22:09:43] 😴 Intentional quit detected — standing down, will not auto-restart
+[2026-08-28 22:10:58] 👀 Intentional-exit marker cleared — resuming normal monitoring
+[2026-08-29 06:39:15] 🐕 JARVIS watchdog started
+[2026-08-29 06:39:15] 🔁 Restarting JARVIS — reason: heartbeat stale (30448s old, limit 45s)
+[2026-08-29 06:39:17] 🧹 Removed stale single-instance lock file
+[2026-08-29 06:39:19] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-29 06:40:19] 🔁 Restarting JARVIS — reason: heartbeat stale (30512s old, limit 45s)
+[2026-08-29 06:40:24] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-29 06:41:28] 🔁 Restarting JARVIS — reason: heartbeat stale (30579s old, limit 45s)
+[2026-08-29 06:41:46] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-29 06:42:37] 🔁 Restarting JARVIS — reason: heartbeat stale (30650s old, limit 45s)
+[2026-08-29 06:42:43] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-29 06:48:47] 🔁 Restarting JARVIS — reason: heartbeat stale (48s old, limit 45s)
+[2026-08-29 06:49:18] ⚠️ Could not run netstat: Command '['netstat', '-ano']' timed out after 10 seconds
+[2026-08-29 06:49:18] 🧹 Removed stale single-instance lock file
+[2026-08-29 06:49:25] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-29 07:10:12] 🔁 Restarting JARVIS — reason: no heartbeat file found (process not running)
+[2026-08-29 07:10:15] 🔪 Killed stray process PID 28032 holding a JARVIS port
+[2026-08-29 07:10:15] 🧹 Removed stale single-instance lock file
+[2026-08-29 07:10:17] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-29 07:11:17] 🔁 Restarting JARVIS — reason: heartbeat stale (65s old, limit 45s)
+[2026-08-29 07:11:20] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-29 07:36:37] 😴 Intentional quit detected — standing down, will not auto-restart
+[2026-08-29 07:37:22] 👀 Intentional-exit marker cleared — resuming normal monitoring
+[2026-08-29 07:38:52] 😴 Intentional quit detected — standing down, will not auto-restart
+[2026-08-29 07:39:37] 👀 Intentional-exit marker cleared — resuming normal monitoring
+[2026-08-29 07:46:24] 🔁 Restarting JARVIS — reason: heartbeat stale (54s old, limit 45s)
+[2026-08-29 07:46:27] 🔪 Killed stray process PID 24580 holding a JARVIS port
+[2026-08-29 07:46:27] 🧹 Removed stale single-instance lock file
+[2026-08-29 07:46:29] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-29 07:59:32] 🔁 Restarting JARVIS — reason: heartbeat stale (305s old, limit 45s)
+[2026-08-29 07:59:40] 🔪 Killed stray process PID 21292 holding a JARVIS port
+[2026-08-29 07:59:40] 🧹 Removed stale single-instance lock file
+[2026-08-29 07:59:42] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-29 11:01:34] 🐕 JARVIS watchdog started
+[2026-08-29 11:01:34] 🔁 Restarting JARVIS — reason: heartbeat stale (10776s old, limit 45s)
+[2026-08-29 11:01:36] 🧹 Removed stale single-instance lock file
+[2026-08-29 11:01:39] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-30 20:19:35] 🐕 JARVIS watchdog started
+[2026-08-30 20:19:35] 🔁 Restarting JARVIS — reason: heartbeat stale (115788s old, limit 45s)
+[2026-08-30 20:19:37] 🧹 Removed stale single-instance lock file
+[2026-08-30 20:19:39] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-31 09:45:18] 🐕 JARVIS watchdog started
+[2026-08-31 09:45:18] 🔁 Restarting JARVIS — reason: heartbeat stale (44542s old, limit 45s)
+[2026-08-31 09:45:20] 🧹 Removed stale single-instance lock file
+[2026-08-31 09:45:22] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-31 10:04:13] 🔁 Restarting JARVIS — reason: heartbeat stale (717s old, limit 45s)
+[2026-08-31 10:04:18] 🔪 Killed stray process PID 12932 holding a JARVIS port
+[2026-08-31 10:04:18] 🧹 Removed stale single-instance lock file
+[2026-08-31 10:04:20] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-31 10:21:06] 🔁 Restarting JARVIS — reason: no heartbeat file found (process not running)
+[2026-08-31 10:21:08] 🔪 Killed stray process PID 2056 holding a JARVIS port
+[2026-08-31 10:21:08] 🧹 Removed stale single-instance lock file
+[2026-08-31 10:21:11] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-31 14:56:11] 🐕 JARVIS watchdog started
+[2026-08-31 14:56:11] 🔁 Restarting JARVIS — reason: heartbeat stale (8293s old, limit 45s)
+[2026-08-31 14:56:15] 🧹 Removed stale single-instance lock file
+[2026-08-31 14:56:17] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-31 15:01:02] 🔁 Restarting JARVIS — reason: no heartbeat file found (process not running)
+[2026-08-31 15:01:11] 🔪 Killed stray process PID 20448 holding a JARVIS port
+[2026-08-31 15:01:12] 🧹 Removed stale single-instance lock file
+[2026-08-31 15:01:14] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:02:14] 🔁 Restarting JARVIS — reason: heartbeat stale (73s old, limit 45s)
+[2026-08-31 15:02:18] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:03:18] 🔁 Restarting JARVIS — reason: heartbeat stale (136s old, limit 45s)
+[2026-08-31 15:03:20] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:04:21] 🔁 Restarting JARVIS — reason: heartbeat stale (199s old, limit 45s)
+[2026-08-31 15:04:24] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:05:24] 🔁 Restarting JARVIS — reason: heartbeat stale (262s old, limit 45s)
+[2026-08-31 15:05:27] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:06:27] 🔁 Restarting JARVIS — reason: heartbeat stale (326s old, limit 45s)
+[2026-08-31 15:06:30] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:07:30] 🔁 Restarting JARVIS — reason: heartbeat stale (389s old, limit 45s)
+[2026-08-31 15:07:33] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:08:33] 🔁 Restarting JARVIS — reason: heartbeat stale (452s old, limit 45s)
+[2026-08-31 15:08:36] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:09:36] 🔁 Restarting JARVIS — reason: heartbeat stale (515s old, limit 45s)
+[2026-08-31 15:09:39] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:10:39] 🔁 Restarting JARVIS — reason: heartbeat stale (578s old, limit 45s)
+[2026-08-31 15:10:43] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:11:43] 🔁 Restarting JARVIS — reason: heartbeat stale (641s old, limit 45s)
+[2026-08-31 15:11:46] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:12:46] 🔁 Restarting JARVIS — reason: heartbeat stale (704s old, limit 45s)
+[2026-08-31 15:12:49] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:13:49] 🔁 Restarting JARVIS — reason: heartbeat stale (768s old, limit 45s)
+[2026-08-31 15:13:53] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:14:53] 🔁 Restarting JARVIS — reason: heartbeat stale (832s old, limit 45s)
+[2026-08-31 15:14:56] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:15:56] 🔁 Restarting JARVIS — reason: heartbeat stale (895s old, limit 45s)
+[2026-08-31 15:16:00] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:17:00] 🔁 Restarting JARVIS — reason: heartbeat stale (958s old, limit 45s)
+[2026-08-31 15:17:03] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:18:03] 🔁 Restarting JARVIS — reason: heartbeat stale (1021s old, limit 45s)
+[2026-08-31 15:18:06] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:19:06] 🔁 Restarting JARVIS — reason: heartbeat stale (1084s old, limit 45s)
+[2026-08-31 15:19:09] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:20:09] 🔁 Restarting JARVIS — reason: heartbeat stale (1148s old, limit 45s)
+[2026-08-31 15:20:12] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:21:12] 🔁 Restarting JARVIS — reason: heartbeat stale (1211s old, limit 45s)
+[2026-08-31 15:21:15] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:22:16] 🔁 Restarting JARVIS — reason: heartbeat stale (1274s old, limit 45s)
+[2026-08-31 15:22:19] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:23:19] 🔁 Restarting JARVIS — reason: heartbeat stale (1337s old, limit 45s)
+[2026-08-31 15:23:22] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:24:22] 🔁 Restarting JARVIS — reason: heartbeat stale (1400s old, limit 45s)
+[2026-08-31 15:24:25] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:25:25] 🔁 Restarting JARVIS — reason: heartbeat stale (1464s old, limit 45s)
+[2026-08-31 15:25:28] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:26:28] 🔁 Restarting JARVIS — reason: heartbeat stale (1527s old, limit 45s)
+[2026-08-31 15:26:32] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:27:32] 🔁 Restarting JARVIS — reason: heartbeat stale (1590s old, limit 45s)
+[2026-08-31 15:27:35] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:28:35] 🔁 Restarting JARVIS — reason: heartbeat stale (1653s old, limit 45s)
+[2026-08-31 15:28:38] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:29:38] 🔁 Restarting JARVIS — reason: heartbeat stale (1716s old, limit 45s)
+[2026-08-31 15:29:41] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:30:41] 🔁 Restarting JARVIS — reason: heartbeat stale (1779s old, limit 45s)
+[2026-08-31 15:30:44] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:31:44] 🔁 Restarting JARVIS — reason: heartbeat stale (1842s old, limit 45s)
+[2026-08-31 15:31:47] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:32:47] 🔁 Restarting JARVIS — reason: heartbeat stale (1905s old, limit 45s)
+[2026-08-31 15:32:50] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:33:50] 🔁 Restarting JARVIS — reason: heartbeat stale (1969s old, limit 45s)
+[2026-08-31 15:33:53] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:34:53] 🔁 Restarting JARVIS — reason: heartbeat stale (2032s old, limit 45s)
+[2026-08-31 15:34:56] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:35:56] 🔁 Restarting JARVIS — reason: heartbeat stale (2095s old, limit 45s)
+[2026-08-31 15:36:00] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:37:00] 🔁 Restarting JARVIS — reason: heartbeat stale (2158s old, limit 45s)
+[2026-08-31 15:37:03] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:38:03] 🔁 Restarting JARVIS — reason: heartbeat stale (2221s old, limit 45s)
+[2026-08-31 15:38:06] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:39:06] 🔁 Restarting JARVIS — reason: heartbeat stale (2284s old, limit 45s)
+[2026-08-31 15:39:09] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:40:09] 🔁 Restarting JARVIS — reason: heartbeat stale (2347s old, limit 45s)
+[2026-08-31 15:40:12] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:41:12] 🔁 Restarting JARVIS — reason: heartbeat stale (2410s old, limit 45s)
+[2026-08-31 15:41:15] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:42:15] 🔁 Restarting JARVIS — reason: heartbeat stale (2473s old, limit 45s)
+[2026-08-31 15:42:18] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:43:18] 🔁 Restarting JARVIS — reason: heartbeat stale (2537s old, limit 45s)
+[2026-08-31 15:43:21] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:44:21] 🔁 Restarting JARVIS — reason: heartbeat stale (2600s old, limit 45s)
+[2026-08-31 15:44:24] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:45:25] 🔁 Restarting JARVIS — reason: heartbeat stale (2663s old, limit 45s)
+[2026-08-31 15:45:28] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:46:28] 🔁 Restarting JARVIS — reason: heartbeat stale (2726s old, limit 45s)
+[2026-08-31 15:46:31] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:47:31] 🔁 Restarting JARVIS — reason: heartbeat stale (2790s old, limit 45s)
+[2026-08-31 15:47:34] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:48:34] 🔁 Restarting JARVIS — reason: heartbeat stale (2853s old, limit 45s)
+[2026-08-31 15:48:38] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:49:38] 🔁 Restarting JARVIS — reason: heartbeat stale (2916s old, limit 45s)
+[2026-08-31 15:49:40] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:50:40] 🔁 Restarting JARVIS — reason: heartbeat stale (2979s old, limit 45s)
+[2026-08-31 15:50:43] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:51:43] 🔁 Restarting JARVIS — reason: heartbeat stale (3042s old, limit 45s)
+[2026-08-31 15:51:46] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:52:46] 🔁 Restarting JARVIS — reason: heartbeat stale (3105s old, limit 45s)
+[2026-08-31 15:52:50] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:53:50] 🔁 Restarting JARVIS — reason: heartbeat stale (3168s old, limit 45s)
+[2026-08-31 15:53:53] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:54:53] 🔁 Restarting JARVIS — reason: heartbeat stale (3231s old, limit 45s)
+[2026-08-31 15:54:56] ❌ Failed to launch jarvis_service.pyw: [WinError 2] The system cannot find the file specified
+[2026-08-31 15:55:56] 🔁 Restarting JARVIS — reason: heartbeat stale (3294s old, limit 45s)
+[2026-08-31 15:55:59] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-08-31 17:01:40] 🔁 Restarting JARVIS — reason: heartbeat stale (127s old, limit 45s)
+[2026-08-31 17:01:51] 🔪 Killed stray process PID 22512 holding a JARVIS port
+[2026-08-31 17:01:51] 🧹 Removed stale single-instance lock file
+[2026-08-31 17:01:53] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-09-01 09:04:25] 🐕 JARVIS watchdog started
+[2026-09-01 09:04:25] 🔁 Restarting JARVIS — reason: heartbeat stale (55788s old, limit 45s)
+[2026-09-01 09:04:26] 🧹 Removed stale single-instance lock file
+[2026-09-01 09:04:28] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-09-01 09:10:03] 🔁 Restarting JARVIS — reason: no heartbeat file found (process not running)
+[2026-09-01 09:10:11] 🔪 Killed stray process PID 15376 holding a JARVIS port
+[2026-09-01 09:10:12] 🧹 Removed stale single-instance lock file
+[2026-09-01 09:10:14] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-09-01 09:20:22] 🔁 Restarting JARVIS — reason: heartbeat stale (166s old, limit 45s)
+[2026-09-01 09:20:27] 🔪 Killed stray process PID 14500 holding a JARVIS port
+[2026-09-01 09:20:28] 🧹 Removed stale single-instance lock file
+[2026-09-01 09:20:30] 🚀 Launched jarvis_service.pyw via pythonw.exe
+[2026-09-01 10:25:17] 😴 Intentional quit detected — standing down, will not auto-restart

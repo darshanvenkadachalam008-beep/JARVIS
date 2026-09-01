@@ -1,0 +1,91 @@
+[
+  {
+    "ts": "2026-07-03 09:12:22",
+    "event_type": "login",
+    "title": "Failed login detected (in-app)",
+    "detail": "09:12:18",
+    "extra": {}
+  },
+  {
+    "ts": "2026-07-05 07:33:20",
+    "event_type": "login",
+    "title": "Failed login detected (in-app)",
+    "detail": "07:33:16",
+    "extra": {}
+  },
+  {
+    "ts": "2026-07-05 10:24:06",
+    "event_type": "login",
+    "title": "Failed login detected (in-app)",
+    "detail": "10:23:59",
+    "extra": {}
+  },
+  {
+    "ts": "2026-07-16 10:54:02",
+    "event_type": "fraud_alert",
+    "title": "CRITICAL fraud case TEST-001",
+    "detail": "txn TXN-1 \u00b7 score 95.0 \u00b7 manual test",
+    "extra": {
+      "assigned_to": "analyst1",
+      "case_id": "TEST-001",
+      "reasons": [
+        "manual test"
+      ],
+      "risk_score": 95.0,
+      "severity": "CRITICAL",
+      "source": "manual-test",
+      "transaction_id": "TXN-1",
+      "ts": "2026-07-16 12:00:00",
+      "user_id": "USR-1"
+    }
+  },
+  {
+    "ts": "2026-07-16 12:51:29",
+    "event_type": "account_holder_notice",
+    "title": "Freeze notice sent for case CASE-6AD48AEA23",
+    "detail": "user=USR00001 to=+918015054090 sms_ok=True",
+    "extra": {}
+  },
+  {
+    "ts": "2026-07-16 12:54:16",
+    "event_type": "account_holder_notice",
+    "title": "Freeze notice sent for case CASE-A190EEC08D",
+    "detail": "user=USR00001 to=+918015054090 sms_ok=True",
+    "extra": {}
+  },
+  {
+    "ts": "2026-07-16 13:35:16",
+    "event_type": "account_holder_notice",
+    "title": "Freeze notice sent for case CASE-5A9D7F804B",
+    "detail": "user=USR00001 to=+918015054090 sms_ok=True",
+    "extra": {}
+  },
+  {
+    "ts": "2026-07-16 13:38:59",
+    "event_type": "account_holder_notice",
+    "title": "Freeze notice sent for case CASE-4E017003B8",
+    "detail": "user=USR00001 to=+918015054090 sms_ok=True",
+    "extra": {}
+  },
+  {
+    "ts": "2026-07-16 13:44:05",
+    "event_type": "account_holder_notice",
+    "title": "Freeze notice sent for case CASE-23BDECB626",
+    "detail": "user=USR00001 to=+918015054090 sms_ok=True",
+    "extra": {}
+  },
+  {
+    "ts": "2026-07-16 13:46:56",
+    "event_type": "account_holder_notice",
+    "title": "Freeze notice sent for case CASE-84A65D35E0",
+    "detail": "user=USR00001 to=+918015054090 sms_ok=True",
+    "extra": {}
+  },
+  {
+    "ts": "2026-07-16 15:01:33",
+    "event_type": "account_holder_notice",
+    "title": "Freeze notice sent for case CASE-AE5E178F44",
+    "detail": "user=USR00001 to=+918015054090 sms_ok=True",
+    "extra": {}
+  }
+]

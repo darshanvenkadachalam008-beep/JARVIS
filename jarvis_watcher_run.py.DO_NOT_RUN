@@ -1,0 +1,9 @@
+﻿import sys, os
+sys.path.insert(0, r'D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\venv\Lib\site-packages')
+sys.path.insert(0, r'D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main')
+os.chdir(r'D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main')
+import threading
+from jarvis_watcher_service import IntruderWatcher, _log
+_log('=== Watcher started via Scheduled Task ===')
+stop = threading.Event()
+IntruderWatcher(stop).run()

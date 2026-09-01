@@ -1,0 +1,200 @@
+Traceback (most recent call last):
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_run.py", line 9, in <module>
+    IntruderWatcher(stop).run()
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 320, in run
+    events = _query_events_after(highest_seen)
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 249, in _query_events_after
+    out = _run_ps(
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 226, in _run_ps
+    result = subprocess.run(
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\subprocess.py", line 503, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\subprocess.py", line 1149, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\subprocess.py", line 1523, in _communicate
+    self.stdout_thread.join(self._remaining_time(endtime))
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 1093, in join
+    self._wait_for_tstate_lock(timeout=max(timeout, 0))
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 1105, in _wait_for_tstate_lock
+    elif lock.acquire(block, timeout):
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_run.py", line 9, in <module>
+    IntruderWatcher(stop).run()
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 320, in run
+    events = _query_events_after(highest_seen)
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 249, in _query_events_after
+    out = _run_ps(
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 226, in _run_ps
+    result = subprocess.run(
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\subprocess.py", line 503, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\subprocess.py", line 1149, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\subprocess.py", line 1523, in _communicate
+    self.stdout_thread.join(self._remaining_time(endtime))
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 1093, in join
+    self._wait_for_tstate_lock(timeout=max(timeout, 0))
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 1105, in _wait_for_tstate_lock
+    elif lock.acquire(block, timeout):
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_run.py", line 9, in <module>
+    IntruderWatcher(stop).run()
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 320, in run
+    events = _query_events_after(highest_seen)
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 249, in _query_events_after
+    out = _run_ps(
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 226, in _run_ps
+    result = subprocess.run(
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\subprocess.py", line 503, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\subprocess.py", line 1149, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\subprocess.py", line 1523, in _communicate
+    self.stdout_thread.join(self._remaining_time(endtime))
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 1093, in join
+    self._wait_for_tstate_lock(timeout=max(timeout, 0))
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 1105, in _wait_for_tstate_lock
+    elif lock.acquire(block, timeout):
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_run.py", line 9, in <module>
+    IntruderWatcher(stop).run()
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 431, in run
+    _log(f"Telegram configured: {self._tg_ok}")
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 600, in wait
+    signaled = self._cond.wait(timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 324, in wait
+    gotit = waiter.acquire(True, timeout)
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_run.py", line 9, in <module>
+    IntruderWatcher(stop).run()
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 430, in run
+    parts = line.split("|", 1)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 600, in wait
+    signaled = self._cond.wait(timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 324, in wait
+    gotit = waiter.acquire(True, timeout)
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_run.py", line 9, in <module>
+    IntruderWatcher(stop).run()
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 527, in run
+    or self._config.get("TELEGRAM_BOT_TOKEN"))
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 600, in wait
+    signaled = self._cond.wait(timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 324, in wait
+    gotit = waiter.acquire(True, timeout)
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_run.py", line 9, in <module>
+    IntruderWatcher(stop).run()
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 567, in run
+    self._stop.wait(POLL_INTERVAL)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 600, in wait
+    signaled = self._cond.wait(timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 324, in wait
+    gotit = waiter.acquire(True, timeout)
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_run.py", line 9, in <module>
+    IntruderWatcher(stop).run()
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 601, in run
+    baseline = latest
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 600, in wait
+    signaled = self._cond.wait(timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 324, in wait
+    gotit = waiter.acquire(True, timeout)
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_run.py", line 9, in <module>
+    IntruderWatcher(stop).run()
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 637, in run
+    continue
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 600, in wait
+    signaled = self._cond.wait(timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 324, in wait
+    gotit = waiter.acquire(True, timeout)
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_run.py", line 9, in <module>
+    IntruderWatcher(stop).run()
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 741, in run
+    self._fcm = FCMPusher(log_fn=_log) if HAS_FCM else None
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 600, in wait
+    signaled = self._cond.wait(timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 324, in wait
+    gotit = waiter.acquire(True, timeout)
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_run.py", line 9, in <module>
+    IntruderWatcher(stop).run()
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 799, in run
+    self._fire_alert(time_created)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 600, in wait
+    signaled = self._cond.wait(timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 324, in wait
+    gotit = waiter.acquire(True, timeout)
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_run.py", line 9, in <module>
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 793, in run
+    events = _query_events_after(highest_seen)
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 662, in _query_events_after
+    ok, out = _run_wevtutil(["qe", "Security", f"/q:{query}", "/rd:false", "/c:20", "/f:xml"])
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 556, in _run_wevtutil
+    result = subprocess.run(
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\subprocess.py", line 503, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\subprocess.py", line 1149, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\subprocess.py", line 1514, in _communicate
+    self.stderr_thread.start()
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 928, in start
+    _start_new_thread(self._bootstrap, ())
+KeyboardInterrupt
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+C:\Users\darshan\AppData\Local\Programs\Python\Python310\python.exe: can't open file 'D:\\Mark-XXXIX-OR-main\\Mark-XXXIX-OR-main\\jarvis_watcher_run.py': [Errno 2] No such file or directory
+Traceback (most recent call last):
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_run.py", line 9, in <module>
+    IntruderWatcher(stop).run()
+  File "D:\Mark-XXXIX-OR-main\Mark-XXXIX-OR-main\jarvis_watcher_service.py", line 803, in run
+    self._stop.wait(POLL_INTERVAL)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 600, in wait
+    signaled = self._cond.wait(timeout)
+  File "C:\Users\darshan\AppData\Local\Programs\Python\Python310\lib\threading.py", line 324, in wait
+    gotit = waiter.acquire(True, timeout)
+KeyboardInterrupt

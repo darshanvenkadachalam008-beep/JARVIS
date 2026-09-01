@@ -1,0 +1,10 @@
+{
+  "gemini_api_key":       "YOUR_GEMINI_API_KEY_HERE",
+  "openrouter_api_key":   "YOUR_OPENROUTER_API_KEY_HERE",
+  "youtube_api_key":      "YOUR_YOUTUBE_DATA_API_KEY_HERE",
+  "meta_access_token":    "YOUR_META_ACCESS_TOKEN_HERE",
+  "github_token":         "YOUR_GITHUB_TOKEN_HERE",
+  "google_analytics_key": "YOUR_GOOGLE_ANALYTICS_KEY_HERE",
+  "os_system":            "windows",
+  "wake_sensitivity":     0.49
+}

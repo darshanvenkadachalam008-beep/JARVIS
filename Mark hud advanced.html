@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>M.A.R.K — Containment Core</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-void:      #08090b;
+    --bg-void-2:    #0d0f12;
+    --core-ember:   #ff7a30;
+    --core-ember-2: #ffb347;
+    --core-deep:    #c73e1d;
+    --steel:        #6ea8c9;
+    --steel-dim:    #3c5a6b;
+    --alert:        #ff2f3a;
+    --chrome:       #7c8590;
+    --chrome-dim:   #454b52;
+    --text-hot:     #f4ede2;
+    --font-display: 'Space Grotesk', system-ui, sans-serif;
+    --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; margin:0; background:var(--bg-void); overflow:hidden; }
+  body{
+    font-family:var(--font-display);
+    color:var(--text-hot);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .stage{
+    position:relative;
+    height:100vh;
+    width:100vw;
+    background:
+      radial-gradient(ellipse at 50% 38%, rgba(255,122,48,0.05), transparent 55%),
+      linear-gradient(180deg, var(--bg-void-2), var(--bg-void) 70%);
+  }
+
+  /* faint scanline / vignette texture, ambient not decorative-for-its-own-sake */
+  .stage::before{
+    content:"";
+    position:absolute; inset:0;
+    background:repeating-linear-gradient(180deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+    pointer-events:none;
+    mix-blend-mode:overlay;
+  }
+  .stage::after{
+    content:"";
+    position:absolute; inset:0;
+    box-shadow: inset 0 0 18vw rgba(0,0,0,0.75);
+    pointer-events:none;
+  }
+
+  /* ── Top chrome ─────────────────────────────────────────── */
+  .topbar{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:28px 34px 0;
+    z-index:5;
+  }
+  .wordmark{ display:flex; align-items:center; gap:10px; }
+  .wordmark .dot{
+    width:8px; height:8px; border-radius:50%;
+    background:var(--core-ember);
+    box-shadow:0 0 8px 2px rgba(255,122,48,0.7);
+    animation: pulse-dot 2.4s ease-in-out infinite;
+  }
+  .wordmark .name{
+    font-weight:600; letter-spacing:0.14em; font-size:13px;
+    text-transform:uppercase; color:var(--text-hot);
+  }
+  .wordmark .sub{
+    font-family:var(--font-mono); font-size:11px; color:var(--chrome);
+    letter-spacing:0.08em; margin-left:4px;
+  }
+  @keyframes pulse-dot{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+  .telemetry-block{
+    text-align:right; font-family:var(--font-mono);
+    font-size:11px; color:var(--chrome); line-height:1.6;
+    letter-spacing:0.03em;
+  }
+  .telemetry-block .lead{ color:var(--core-ember-2); }
+
+  /* ── Core stage ─────────────────────────────────────────── */
+  .core-wrap{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  canvas#core{ display:block; }
+
+  .status-label{
+    position:absolute; left:50%; top:calc(50% + 15vmin);
+    transform:translateX(-50%);
+    text-align:center;
+    z-index:4;
+    pointer-events:none;
+  }
+  .status-label .word{
+    font-size:clamp(20px, 3vmin, 30px);
+    font-weight:700; letter-spacing:0.22em; text-transform:uppercase;
+    transition:color .4s ease, text-shadow .4s ease;
+  }
+  .status-label .caption{
+    margin-top:6px; font-family:var(--font-mono); font-size:11px;
+    letter-spacing:0.08em; color:var(--chrome);
+    min-height:14px;
+  }
+
+  /* ── Waveform strip ─────────────────────────────────────── */
+  .waveform{
+    position:absolute; bottom:96px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:flex-end; gap:3px;
+    height:36px; z-index:4;
+  }
+  .waveform span{
+    width:3px; border-radius:2px;
+    background:var(--core-ember);
+    height:4px;
+    transition:background .4s ease;
+  }
+
+  /* ── Dev console (clearly separated as tooling, not product chrome) ── */
+  .devbar{
+    position:absolute; left:0; right:0; bottom:0;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    padding:14px 18px calc(14px + env(safe-area-inset-bottom));
+    background:linear-gradient(180deg, transparent, rgba(0,0,0,0.55) 40%);
+    z-index:6;
+    flex-wrap:wrap;
+  }
+  .devbar .tag{
+    font-family:var(--font-mono); font-size:9px; color:var(--chrome-dim);
+    letter-spacing:0.12em; text-transform:uppercase; margin-right:6px;
+  }
+  .devbar button{
+    font-family:var(--font-mono); font-size:10.5px; letter-spacing:0.05em;
+    color:var(--chrome); background:rgba(255,255,255,0.03);
+    border:1px solid rgba(255,255,255,0.09); border-radius:5px;
+    padding:7px 12px; cursor:pointer; text-transform:uppercase;
+    transition:all .15s ease;
+  }
+  .devbar button:hover{ color:var(--text-hot); border-color:rgba(255,255,255,0.25); background:rgba(255,255,255,0.06); }
+  .devbar button:focus-visible{ outline:2px solid var(--core-ember-2); outline-offset:2px; }
+  .devbar button.active{ color:var(--bg-void); background:var(--core-ember-2); border-color:var(--core-ember-2); }
+  .devbar button.mic.on{ color:var(--bg-void); background:var(--steel); border-color:var(--steel); }
+
+  /* ── Side panels (telemetry left, transcript+gesture right) ───── */
+  .panel{
+    position:absolute; top:96px; bottom:96px;
+    width:230px;
+    padding:16px 16px;
+    border:1px solid rgba(255,255,255,0.08);
+    background:linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005));
+    border-radius:10px;
+    backdrop-filter: blur(2px);
+    z-index:4;
+    display:flex; flex-direction:column;
+    font-family:var(--font-mono);
+  }
+  .panel-left{ left:34px; }
+  .panel-right{ right:34px; }
+  .panel h3{
+    margin:0 0 12px; font-size:10px; letter-spacing:0.16em;
+    text-transform:uppercase; color:var(--chrome); font-weight:500;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .panel h3 .live-dot{
+    width:6px; height:6px; border-radius:50%; background:var(--steel);
+    box-shadow:0 0 6px 1px var(--steel);
+    animation:pulse-dot 1.6s ease-in-out infinite;
+  }
+
+  .tele-row{
+    display:flex; justify-content:space-between; align-items:baseline;
+    font-size:11px; padding:7px 0; border-bottom:1px dashed rgba(255,255,255,0.07);
+  }
+  .tele-row .k{ color:var(--chrome); letter-spacing:0.04em; }
+  .tele-row .v{ color:var(--text-hot); font-weight:500; }
+  .tele-row .v.ok{ color:#7fd68a; }
+  .tele-row .v.warn{ color:var(--core-ember-2); }
+  .tele-row .v.bad{ color:var(--alert); }
+
+  .gesture-readout{
+    margin-top:auto;
+    padding-top:14px; border-top:1px solid rgba(255,255,255,0.08);
+  }
+  .gesture-readout .k{ font-size:10px; color:var(--chrome); letter-spacing:0.1em; text-transform:uppercase; }
+  .gesture-readout .val{
+    font-size:22px; font-weight:600; color:var(--core-ember-2);
+    font-family:var(--font-display); margin-top:4px;
+    transition:color .25s ease;
+  }
+  .gesture-readout .hint{ font-size:10px; color:var(--chrome-dim); margin-top:6px; line-height:1.5; }
+
+  .transcript-box{
+    flex:1; overflow-y:auto; font-size:12px; line-height:1.6;
+    color:var(--chrome); scrollbar-width:thin;
+  }
+  .transcript-box .final{ color:var(--text-hot); }
+  .transcript-box .interim{ color:var(--steel); opacity:0.8; }
+  .transcript-box .placeholder{ color:var(--chrome-dim); font-style:italic; }
+  .transcript-box::-webkit-scrollbar{ width:4px; }
+  .transcript-box::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.12); border-radius:2px; }
+
+  video#gestureVideo{
+    position:absolute; bottom:16px; right:16px;
+    width:64px; height:48px; object-fit:cover;
+    border-radius:6px; border:1px solid rgba(255,255,255,0.15);
+    opacity:0.85; transform:scaleX(-1);
+  }
+
+  @media (max-width:1100px){
+    .panel{ display:none; }
+  }
+  @media (max-width:560px){
+    .telemetry-block{ display:none; }
+    .waveform{ bottom:84px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+
+  <div class="topbar">
+    <div class="wordmark">
+      <span class="dot" id="linkDot"></span>
+      <span class="name">M.A.R.K</span>
+      <span class="sub">// XXXIX-OR CONTAINMENT CORE</span>
+    </div>
+    <div class="telemetry-block" id="telemetry">
+      <div class="lead" id="clock">00:00:00</div>
+      <div id="dateline">—</div>
+      <div id="netstate">LINK · LOCAL</div>
+    </div>
+  </div>
+
+  <div class="panel panel-left" id="telemetryPanel">
+    <h3>System Telemetry <span class="live-dot"></span></h3>
+    <div class="tele-row"><span class="k">Vault</span><span class="v ok" id="tVault">UNLOCKED</span></div>
+    <div class="tele-row"><span class="k">Audit Log</span><span class="v ok" id="tAudit">CHAIN OK</span></div>
+    <div class="tele-row"><span class="k">Alerts (12h)</span><span class="v ok" id="tAlerts">0</span></div>
+    <div class="tele-row"><span class="k">Next Event</span><span class="v" id="tCalendar">—</span></div>
+    <div class="tele-row"><span class="k">CPU</span><span class="v" id="tCpu">—</span></div>
+    <div class="tele-row"><span class="k">Mic</span><span class="v" id="tMic">OFF</span></div>
+    <div class="tele-row"><span class="k">Camera</span><span class="v" id="tCam">OFF</span></div>
+    <div class="gesture-readout">
+      <div class="k">Note</div>
+      <div class="hint">Demo values shown. Wire this panel to core.audit_log / core.secure_vault / core.calendar_intel over the mobile_server websocket for real numbers — see comments in the script.</div>
+    </div>
+  </div>
+
+  <div class="core-wrap">
+    <canvas id="core" width="900" height="900"></canvas>
+  </div>
+
+  <div class="panel panel-right" id="transcriptPanel">
+    <h3>Live Transcript <span class="live-dot"></span></h3>
+    <div class="transcript-box" id="transcriptBox">
+      <span class="placeholder">— awaiting speech input —</span>
+    </div>
+    <div class="gesture-readout">
+      <div class="k">Gesture</div>
+      <div class="val" id="gestureVal">NONE</div>
+      <div class="hint">Open palm → Listening · Closed fist → Standby · Thumbs up → Respond · Victory → Processing</div>
+    </div>
+  </div>
+
+  <video id="gestureVideo" autoplay muted playsinline style="display:none;"></video>
+  <canvas id="gestureCanvas" style="display:none;"></canvas>
+
+  <div class="status-label">
+    <div class="word" id="statusWord">STANDBY</div>
+    <div class="caption" id="statusCaption">systems nominal</div>
+  </div>
+
+  <div class="waveform" id="waveform"></div>
+
+  <div class="devbar">
+    <span class="tag">Simulate</span>
+    <button data-state="standby" class="active">Standby</button>
+    <button data-state="listening">Listening</button>
+    <button data-state="processing">Processing</button>
+    <button data-state="responding">Responding</button>
+    <button data-state="alert">Alert</button>
+    <button class="mic" id="micBtn">Enable Mic Input</button>
+    <button class="mic" id="speechBtn">Enable Speech Transcript</button>
+    <button class="mic" id="gestureBtn">Enable Gesture Control</button>
+  </div>
+
+</div>
+
+<script>
+/* ============================================================
+   M.A.R.K Containment Core — reactive HUD
+   ------------------------------------------------------------
+   Integration notes (for wiring into the real assistant):
+   - Call setState(name) from your app to drive the visual:
+       setState("standby" | "listening" | "processing" | "responding" | "alert")
+   - Call setLevel(0..1) continuously while speaking/listening to
+     drive the waveform + core amplitude from real audio, e.g. from
+     a WebSocket bridge to mobile_server.py's existing :8081 socket,
+     or from the Web Audio AnalyserNode already wired up below when
+     "Enable Mic Input" is on.
+   - The bottom "Simulate" bar is dev-only tooling for previewing
+     states without a live backend; remove it in production and
+     drive setState()/setLevel() from your real event stream instead.
+   ============================================================ */
+
+const STATE_COLORS = {
+  standby:    { core:"#ff7a30", core2:"#ffb347", ring:"#7c8590", glow:"rgba(255,122,48,0.35)" },
+  listening:  { core:"#6ea8c9", core2:"#9fd1ea", ring:"#6ea8c9", glow:"rgba(110,168,201,0.45)" },
+  processing: { core:"#ffb347", core2:"#ff7a30", ring:"#ffb347", glow:"rgba(255,179,71,0.5)"  },
+  responding: { core:"#ff934d", core2:"#ffd39a", ring:"#ff934d", glow:"rgba(255,147,77,0.55)" },
+  alert:      { core:"#ff2f3a", core2:"#ff6b6b", ring:"#ff2f3a", glow:"rgba(255,47,58,0.6)"   },
+};
+const STATE_TEXT = {
+  standby:    { word:"STANDBY",    caption:"systems nominal" },
+  listening:  { word:"LISTENING",  caption:"capturing input\u2026" },
+  processing: { word:"PROCESSING", caption:"reasoning in progress" },
+  responding: { word:"RESPONDING", caption:"speaking" },
+  alert:      { word:"ALERT",      caption:"unrecognized presence detected" },
+};
+const BASE_RPM = { standby:2.2, listening:3.4, processing:7.5, responding:4.2, alert:9.5 };
+
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let current = "standby";
+let level = 0;            // 0..1 external amplitude (mic or synthetic)
+let targetLevel = 0;
+let ringAngle = 0;
+let particles = [];
+
+function setState(name){
+  if(!STATE_COLORS[name]) return;
+  current = name;
+  const t = STATE_TEXT[name];
+  const wordEl = document.getElementById("statusWord");
+  wordEl.textContent = t.word;
+  wordEl.style.color = STATE_COLORS[name].core2;
+  wordEl.style.textShadow = `0 0 18px ${STATE_COLORS[name].glow}`;
+  document.getElementById("statusCaption").textContent = t.caption;
+  document.querySelectorAll(".devbar button[data-state]").forEach(b=>{
+    b.classList.toggle("active", b.dataset.state === name);
+  });
+  document.getElementById("linkDot").style.background = STATE_COLORS[name].core;
+}
+
+function setLevel(v){ targetLevel = Math.max(0, Math.min(1, v)); }
+
+/* ---- synthetic amplitude when no real audio is connected ---- */
+let synthPhase = 0;
+function synthLevel(dt){
+  if(current === "listening" || current === "responding"){
+    synthPhase += dt * (current === "responding" ? 4.2 : 2.6);
+    const base = 0.35 + 0.3*Math.sin(synthPhase) + 0.18*Math.sin(synthPhase*2.7);
+    return Math.max(0, Math.min(1, base + (Math.random()-0.5)*0.12));
+  }
+  if(current === "processing") return 0.22 + Math.random()*0.08;
+  if(current === "alert") return 0.55 + 0.35*Math.sin(synthPhase += dt*10);
+  return 0.08 + 0.04*Math.sin(synthPhase += dt*0.8);
+}
+
+/* ---- waveform bars ---- */
+const BAR_COUNT = 40;
+const waveEl = document.getElementById("waveform");
+for(let i=0;i<BAR_COUNT;i++){
+  const s = document.createElement("span");
+  waveEl.appendChild(s);
+}
+const bars = [...waveEl.children];
+
+function drawWaveform(amp){
+  const c = STATE_COLORS[current].core2;
+  bars.forEach((b, i)=>{
+    const mid = BAR_COUNT/2;
+    const falloff = 1 - Math.abs(i-mid)/mid;
+    const n = (Math.sin((i*13.1 + ringAngle*40)) * 0.5 + 0.5);
+    const h = 4 + amp * 32 * falloff * (0.35 + 0.65*n);
+    b.style.height = h.toFixed(1) + "px";
+    b.style.background = c;
+  });
+}
+
+/* ---- canvas core: containment rings + plasma orb + particles ---- */
+const canvas = document.getElementById("core");
+const ctx = canvas.getContext("2d");
+let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+function sizeCanvas(){
+  const size = Math.min(window.innerWidth, window.innerHeight) * 0.62;
+  canvas.style.width = size + "px";
+  canvas.style.height = size + "px";
+  canvas.width = size * dpr;
+  canvas.height = size * dpr;
+}
+sizeCanvas();
+window.addEventListener("resize", sizeCanvas);
+
+function initParticles(){
+  particles = [];
+  const n = 46;
+  for(let i=0;i<n;i++){
+    particles.push({
+      angle: Math.random()*Math.PI*2,
+      radius: 0.30 + Math.random()*0.14,
+      speed: (Math.random()*0.6+0.3) * (Math.random()<0.5?1:-1),
+      size: Math.random()*1.6+0.6,
+      wobble: Math.random()*Math.PI*2,
+    });
+  }
+}
+initParticles();
+
+function drawCore(dt, amp){
+  const w = canvas.width, h = canvas.height;
+  const cx = w/2, cy = h/2;
+  const R = Math.min(w,h) * 0.42;
+  const colors = STATE_COLORS[current];
+
+  ctx.clearRect(0,0,w,h);
+
+  const rpm = BASE_RPM[current] * (reduceMotion ? 0.4 : 1);
+  ringAngle += dt * (rpm/60) * Math.PI*2;
+
+  /* outer tick ring (containment gauge) */
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.rotate(ringAngle*0.4);
+  const ticks = 72;
+  for(let i=0;i<ticks;i++){
+    const a = (i/ticks)*Math.PI*2;
+    const active = (i % 6 === 0) || (i/ticks < (0.15+amp*0.7));
+    ctx.save();
+    ctx.rotate(a);
+    ctx.strokeStyle = active ? colors.ring : "rgba(255,255,255,0.06)";
+    ctx.lineWidth = (i%6===0) ? 2.4 : 1.2;
+    ctx.beginPath();
+    ctx.moveTo(0, -R*1.22);
+    ctx.lineTo(0, -R*1.22 - (i%6===0? 14:8));
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+
+  /* mid containment ring, counter-rotating */
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.rotate(-ringAngle*0.65);
+  ctx.strokeStyle = "rgba(255,255,255,0.10)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(0,0, R*1.08, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.setLineDash([2, 10]);
+  ctx.strokeStyle = colors.ring;
+  ctx.globalAlpha = 0.55;
+  ctx.beginPath();
+  ctx.arc(0,0, R*1.08, 0, Math.PI*1.4);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  /* outer glow halo, breathes with amplitude */
+  const haloR = R * (1.15 + amp*0.18);
+  const halo = ctx.createRadialGradient(cx,cy, R*0.2, cx,cy, haloR);
+  halo.addColorStop(0, colors.glow);
+  halo.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(cx,cy, haloR, 0, Math.PI*2);
+  ctx.fill();
+
+  /* plasma orb: layered offset radial gradients for a turbulent forged look */
+  const coreR = R * (0.62 + amp*0.10);
+  for(let layer=0; layer<3; layer++){
+    const t = ringAngle*(0.6+layer*0.3) + layer*2.1;
+    const ox = Math.sin(t)*coreR*0.14;
+    const oy = Math.cos(t*1.3)*coreR*0.14;
+    const grad = ctx.createRadialGradient(
+      cx+ox, cy+oy, coreR*0.02,
+      cx+ox, cy+oy, coreR*(0.85-layer*0.12)
+    );
+    grad.addColorStop(0, layer===0 ? "#fff6ea" : colors.core2);
+    grad.addColorStop(0.45, colors.core);
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.globalAlpha = layer===0 ? 0.95 : 0.55;
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx+ox, cy+oy, coreR*(0.85-layer*0.12), 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  /* hot inner nucleus */
+  const nucleus = ctx.createRadialGradient(cx,cy,0, cx,cy, coreR*0.3);
+  nucleus.addColorStop(0, "#ffffff");
+  nucleus.addColorStop(0.5, colors.core2);
+  nucleus.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = nucleus;
+  ctx.beginPath();
+  ctx.arc(cx,cy, coreR*0.3, 0, Math.PI*2);
+  ctx.fill();
+
+  /* orbiting embers */
+  particles.forEach(p=>{
+    p.angle += dt * p.speed * (0.4 + amp*0.8);
+    p.wobble += dt*2;
+    const rad = R * (p.radius + Math.sin(p.wobble)*0.015) * (1 + amp*0.25);
+    const px = cx + Math.cos(p.angle)*rad*1.7;
+    const py = cy + Math.sin(p.angle)*rad*1.7;
+    ctx.beginPath();
+    ctx.fillStyle = colors.core2;
+    ctx.globalAlpha = 0.55 + Math.sin(p.wobble)*0.25;
+    ctx.arc(px, py, p.size*dpr, 0, Math.PI*2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+/* ---- clock / telemetry ---- */
+function tickClock(){
+  const d = new Date();
+  document.getElementById("clock").textContent = d.toLocaleTimeString([], {hour12:false});
+  document.getElementById("dateline").textContent = d.toLocaleDateString([], {weekday:"short", month:"short", day:"2-digit"});
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+/* ---- optional real mic input ---- */
+let audioCtx, analyser, dataArr, micOn = false;
+document.getElementById("micBtn").addEventListener("click", async ()=>{
+  const btn = document.getElementById("micBtn");
+  if(!micOn){
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      const src = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      dataArr = new Uint8Array(analyser.frequencyBinCount);
+      src.connect(analyser);
+      micOn = true;
+      btn.textContent = "Mic: Live";
+      btn.classList.add("on");
+      document.getElementById("netstate").textContent = "LINK · MIC";
+      setState("listening");
+    }catch(e){
+      btn.textContent = "Mic Denied";
+    }
+  } else {
+    micOn = false;
+    audioCtx && audioCtx.close();
+    btn.textContent = "Enable Mic Input";
+    btn.classList.remove("on");
+    document.getElementById("netstate").textContent = "LINK · LOCAL";
+  }
+});
+
+document.querySelectorAll(".devbar button[data-state]").forEach(btn=>{
+  btn.addEventListener("click", ()=> setState(btn.dataset.state));
+});
+
+/* ============================================================
+   LIVE TRANSCRIPT — Web Speech API (free, built-in, Chrome/Edge)
+   ------------------------------------------------------------
+   Runs entirely client-side against the browser's speech service.
+   No API key. For a fully offline alternative (audio never leaves
+   the machine), swap this block for a bridge to a local Vosk or
+   faster-whisper process over the mobile_server websocket instead —
+   the transcriptBox.append logic below stays the same either way.
+   ============================================================ */
+const transcriptBox = document.getElementById("transcriptBox");
+let recognition = null;
+let speechOn = false;
+
+function appendTranscript(text, isFinal){
+  const interim = transcriptBox.querySelector(".interim");
+  if(interim) interim.remove();
+  if(transcriptBox.querySelector(".placeholder")) transcriptBox.innerHTML = "";
+
+  if(isFinal){
+    const line = document.createElement("div");
+    line.className = "final";
+    line.textContent = text;
+    transcriptBox.appendChild(line);
+    while(transcriptBox.children.length > 30) transcriptBox.removeChild(transcriptBox.firstChild);
+  } else if(text) {
+    const line = document.createElement("div");
+    line.className = "interim";
+    line.textContent = text;
+    transcriptBox.appendChild(line);
+  }
+  transcriptBox.scrollTop = transcriptBox.scrollHeight;
+}
+
+document.getElementById("speechBtn").addEventListener("click", ()=>{
+  const btn = document.getElementById("speechBtn");
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){
+    btn.textContent = "Speech API Unsupported";
+    return;
+  }
+  if(!speechOn){
+    recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (e)=>{
+      let interim = "", final = "";
+      for(let i=e.resultIndex; i<e.results.length; i++){
+        const t = e.results[i][0].transcript;
+        if(e.results[i].isFinal) final += t;
+        else interim += t;
+      }
+      if(final){
+        appendTranscript(final.trim(), true);
+        setState("processing");
+        setTimeout(()=>{ if(current === "processing") setState("listening"); }, 900);
+      } else if(interim){
+        appendTranscript(interim.trim(), false);
+      }
+    };
+    recognition.onerror = (e)=>{ console.warn("SpeechRecognition error:", e.error); };
+    recognition.onend = ()=>{ if(speechOn) recognition.start(); }; // auto-restart, browsers stop it periodically
+
+    recognition.start();
+    speechOn = true;
+    btn.textContent = "Transcript: Live";
+    btn.classList.add("on");
+    document.getElementById("tMic").textContent = "LIVE";
+    document.getElementById("tMic").className = "v ok";
+    setState("listening");
+  } else {
+    speechOn = false;
+    recognition && recognition.stop();
+    btn.textContent = "Enable Speech Transcript";
+    btn.classList.remove("on");
+    document.getElementById("tMic").textContent = "OFF";
+    document.getElementById("tMic").className = "v";
+  }
+});
+
+/* ============================================================
+   GESTURE CONTROL — MediaPipe Tasks Vision GestureRecognizer
+   ------------------------------------------------------------
+   Free, on-device, no API key. Loads Google's pre-trained gesture
+   model over CDN once, then runs entirely locally in the browser —
+   no frames are ever uploaded anywhere. Requires camera permission.
+   ============================================================ */
+const GESTURE_MAP = {
+  "Open_Palm":   "listening",
+  "Closed_Fist": "standby",
+  "Thumb_Up":    "responding",
+  "Victory":     "processing",
+};
+let gestureRecognizer = null;
+let gestureLoopActive = false;
+let lastGesture = "NONE";
+let gestureStableCount = 0;
+
+async function loadGestureRecognizer(){
+  const { GestureRecognizer, FilesetResolver } = await import(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14"
+  );
+  const filesetResolver = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+  );
+  return await GestureRecognizer.createFromOptions(filesetResolver, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+      delegate: "GPU",
+    },
+    runningMode: "VIDEO",
+  });
+}
+
+function gestureLoop(video){
+  if(!gestureLoopActive) return;
+  const now = performance.now();
+  if(video.readyState >= 2){
+    const result = gestureRecognizer.recognizeForVideo(video, now);
+    const top = result.gestures && result.gestures[0] && result.gestures[0][0];
+    const name = (top && top.categoryName !== "None") ? top.categoryName : "NONE";
+
+    if(name === lastGesture){
+      gestureStableCount++;
+    } else {
+      lastGesture = name;
+      gestureStableCount = 0;
+    }
+
+    // require a few stable frames before acting, so a hand passing
+    // through frame doesn't cause flicker between states
+    if(gestureStableCount === 4){
+      document.getElementById("gestureVal").textContent = name.replace("_"," ").toUpperCase();
+      if(GESTURE_MAP[name]) setState(GESTURE_MAP[name]);
+    }
+  }
+  requestAnimationFrame(()=>gestureLoop(video));
+}
+
+document.getElementById("gestureBtn").addEventListener("click", async ()=>{
+  const btn = document.getElementById("gestureBtn");
+  const video = document.getElementById("gestureVideo");
+
+  if(!gestureLoopActive){
+    btn.textContent = "Loading Model…";
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width:320, height:240 } });
+      video.srcObject = stream;
+      video.style.display = "block";
+      await video.play();
+
+      if(!gestureRecognizer) gestureRecognizer = await loadGestureRecognizer();
+
+      gestureLoopActive = true;
+      btn.textContent = "Gesture: Live";
+      btn.classList.add("on");
+      document.getElementById("tCam").textContent = "LIVE";
+      document.getElementById("tCam").className = "v ok";
+      gestureLoop(video);
+    }catch(e){
+      console.warn("Gesture control unavailable:", e);
+      btn.textContent = "Gesture Unavailable";
+    }
+  } else {
+    gestureLoopActive = false;
+    const stream = video.srcObject;
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    video.style.display = "none";
+    btn.textContent = "Enable Gesture Control";
+    btn.classList.remove("on");
+    document.getElementById("tCam").textContent = "OFF";
+    document.getElementById("tCam").className = "v";
+    document.getElementById("gestureVal").textContent = "NONE";
+  }
+});
+
+/* ============================================================
+   DEMO TELEMETRY — replace with real data from the Python backend.
+   ------------------------------------------------------------
+   Real wiring: have mobile_server.py's websocket (:8081) push a
+   JSON frame like:
+     { vault: "unlocked", audit_ok: true, alerts_12h: 0,
+       next_event: "Standup @ 10:00", cpu_pct: 14 }
+   whenever state changes, sourced from:
+     - core.secure_vault.SecureVault (vault lock state)
+     - core.audit_log.AuditLog().verify() (audit_ok)
+     - core.sentinel_extras.AlertHistory (alerts_12h)
+     - core.calendar_intel.get_today_summary() (next_event)
+   and update these same DOM nodes from the socket's onmessage
+   handler instead of this setInterval demo.
+   ============================================================ */
+function demoTelemetryTick(){
+  document.getElementById("tCpu").textContent = (12 + Math.round(Math.random()*18)) + "%";
+}
+document.getElementById("tCalendar").textContent = "Standup @ 10:00 AM";
+demoTelemetryTick();
+setInterval(demoTelemetryTick, 3000);
+
+/* ---- main loop ---- */
+let last = performance.now();
+function frame(now){
+  const dt = Math.min(0.05, (now-last)/1000);
+  last = now;
+
+  if(micOn && analyser){
+    analyser.getByteFrequencyData(dataArr);
+    const avg = dataArr.reduce((a,b)=>a+b,0)/dataArr.length/255;
+    targetLevel = avg;
+  } else {
+    targetLevel = synthLevel(dt);
+  }
+  level += (targetLevel - level) * Math.min(1, dt*6);
+
+  drawCore(dt, level);
+  drawWaveform(level);
+  requestAnimationFrame(frame);
+}
+setState("standby");
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
