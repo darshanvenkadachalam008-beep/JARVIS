@@ -71,6 +71,41 @@ class EnrollmentManager:
         except Exception:
             return False
 
+    def is_tampered(self) -> bool:
+        """
+        Returns True if the system was previously initialized but credentials.json
+        was deleted or corrupted (tamper detected).
+        """
+        marker_file = self.auth_dir / ".auth_initialized"
+        if marker_file.exists():
+            if not self.credentials_file.exists():
+                return True
+            try:
+                with open(self.credentials_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                creds = IdentityCredentials.model_validate(data)
+                return not creds.is_initialized
+            except Exception:
+                return True
+        return False
+
+    def _save_credentials_file_unlocked(self, new_creds: IdentityCredentials) -> None:
+        """Persists credentials atomically and sets DACL-protected initialization marker."""
+        marker_file = self.auth_dir / ".auth_initialized"
+        if not marker_file.exists():
+            marker_file.write_text("INITIALIZED", encoding="utf-8")
+        apply_owner_only_dacl(marker_file)
+
+        temp_cred = self.auth_dir / f"creds.tmp.{time.time_ns()}"
+        flags = os.O_CREAT | os.O_WRONLY | os.O_EXCL
+        if hasattr(os, "O_BINARY"):
+            flags |= os.O_BINARY
+        fd = os.open(temp_cred, flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(new_creds.model_dump(), f, indent=2)
+        temp_cred.replace(self.credentials_file)
+        apply_owner_only_dacl(self.credentials_file)
+
     def _get_credentials_unlocked(self) -> Optional[IdentityCredentials]:
         """Loads credentials from disk without acquiring lock (caller must hold lock)."""
         if not self.credentials_file.exists():
@@ -358,15 +393,7 @@ class EnrollmentManager:
                 )
 
                 # Persist credentials atomically
-                temp_cred = self.auth_dir / f"creds.tmp.{time.time_ns()}"
-                flags = os.O_CREAT | os.O_WRONLY | os.O_EXCL
-                if hasattr(os, "O_BINARY"):
-                    flags |= os.O_BINARY
-                fd = os.open(temp_cred, flags, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump(new_creds.model_dump(), f, indent=2)
-                temp_cred.replace(self.credentials_file)
-                apply_owner_only_dacl(self.credentials_file)
+                self._save_credentials_file_unlocked(new_creds)
 
                 # Initialize / reset lockout state cleanly
                 self.lockout_manager.initialize_clean_state()
@@ -426,15 +453,7 @@ class EnrollmentManager:
                     recovery_pin=recovery_record,
                 )
 
-                temp_cred = self.auth_dir / f"creds.tmp.{time.time_ns()}"
-                flags = os.O_CREAT | os.O_WRONLY | os.O_EXCL
-                if hasattr(os, "O_BINARY"):
-                    flags |= os.O_BINARY
-                fd = os.open(temp_cred, flags, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump(new_creds.model_dump(), f, indent=2)
-                temp_cred.replace(self.credentials_file)
-                apply_owner_only_dacl(self.credentials_file)
+                self._save_credentials_file_unlocked(new_creds)
 
                 self.lockout_manager.initialize_clean_state()
                 self._emit_event(
@@ -462,15 +481,7 @@ class EnrollmentManager:
                     recovery_pin=recovery_rec,
                 )
 
-                temp_cred = self.auth_dir / f"creds.tmp.{time.time_ns()}"
-                flags = os.O_CREAT | os.O_WRONLY | os.O_EXCL
-                if hasattr(os, "O_BINARY"):
-                    flags |= os.O_BINARY
-                fd = os.open(temp_cred, flags, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump(new_creds.model_dump(), f, indent=2)
-                temp_cred.replace(self.credentials_file)
-                apply_owner_only_dacl(self.credentials_file)
+                self._save_credentials_file_unlocked(new_creds)
 
                 self.lockout_manager.initialize_clean_state()
                 self._emit_event("primary_pin_set_direct_success", {})
@@ -495,15 +506,7 @@ class EnrollmentManager:
                     recovery_pin=recovery_record,
                 )
 
-                temp_cred = self.auth_dir / f"creds.tmp.{time.time_ns()}"
-                flags = os.O_CREAT | os.O_WRONLY | os.O_EXCL
-                if hasattr(os, "O_BINARY"):
-                    flags |= os.O_BINARY
-                fd = os.open(temp_cred, flags, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump(new_creds.model_dump(), f, indent=2)
-                temp_cred.replace(self.credentials_file)
-                apply_owner_only_dacl(self.credentials_file)
+                self._save_credentials_file_unlocked(new_creds)
 
                 self.lockout_manager.initialize_clean_state()
                 self._emit_event("recovery_pin_set_direct_success", {})

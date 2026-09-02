@@ -110,6 +110,7 @@ class FaceVerifier:
         base_path: Optional[Path] = None,
         threshold: Optional[float] = None,
         spoof_threshold: Optional[float] = None,
+        access_control: Optional[Any] = None,
     ):
         base = base_path or (_base_dir() / "memory")
         base.mkdir(parents=True, exist_ok=True)
@@ -117,9 +118,55 @@ class FaceVerifier:
         self.meta_path = base / "face_profile.json"
         self._explicit_threshold = threshold
         self._explicit_spoof_threshold = spoof_threshold
-        self._audit = AuditLog()
+        self._audit = AuditLog(path=base / "audit_log.jsonl")
         self._recognizer = None   # lazy-loaded cv2.face.LBPHFaceRecognizer
         self._cascade = None      # lazy-loaded cv2.CascadeClassifier
+        self._access_control = access_control
+
+    def _get_access_control(self):
+        if self._access_control is None:
+            from core.access_control import AccessControl
+            self._access_control = AccessControl()
+        return self._access_control
+
+    def _verify_pin_gate(self, pin: Optional[str], action: str) -> None:
+        """
+        Enforces PIN verification before allowing face profile creation, overwrite, or deletion.
+        If AccessControl is configured:
+          - Requires valid PIN via AccessControl.verify_pin().
+          - Fails loud with audit entry and raises PermissionError on invalid PIN, lockout, or missing PIN.
+        If AccessControl credentials were deleted after initialization (tampered):
+          - Fails closed with critical audit entry and raises PermissionError.
+        If AccessControl is not configured (fresh install):
+          - Allows operation with a warning in audit log.
+        """
+        ac = self._get_access_control()
+        if getattr(ac, "is_tampered", lambda: False)():
+            self._audit.append(f"{action}_failed_tampered", {
+                "result": "denied",
+                "reason": "credentials_deleted_tampering_detected",
+            })
+            raise PermissionError(f"Face profile {action} rejected: Security credentials tampered (missing after initialization).")
+
+        if not ac.is_configured():
+            self._audit.append(f"{action}_ungated_unconfigured", {
+                "warning": "No Security PIN configured; face profile modification allowed without PIN gate"
+            })
+            return
+
+        if not pin:
+            self._audit.append(f"{action}_failed_no_pin", {
+                "result": "denied",
+                "reason": "missing_pin",
+            })
+            raise PermissionError(f"Face profile {action} rejected: Security PIN is required.")
+
+        if not ac.verify_pin(pin, action=action):
+            self._audit.append(f"{action}_failed_invalid_pin", {
+                "result": "denied",
+                "reason": "invalid_pin_or_locked",
+            })
+            raise PermissionError(f"Face profile {action} rejected: Invalid Security PIN or lockout active.")
 
     @property
     def threshold(self) -> float:
@@ -214,21 +261,24 @@ class FaceVerifier:
     def is_enrolled(self) -> bool:
         return self.model_path.exists() and self.meta_path.exists()
 
-    def reset(self) -> None:
+    def reset(self, pin: Optional[str] = None) -> None:
+        self._verify_pin_gate(pin, action="face_enroll_reset")
         for p in (self.model_path, self.meta_path):
             if p.exists():
                 p.unlink()
         self._recognizer = None
-        self._audit.append("face_enroll_reset", {})
+        self._audit.append("face_enroll_reset", {"result": "success"})
 
     # ── enrollment ──────────────────────────────────────────────────────
 
-    def enroll(self, jpeg_images: List[bytes]) -> bool:
+    def enroll(self, jpeg_images: List[bytes], pin: Optional[str] = None) -> bool:
         """
         jpeg_images: MIN_ENROLL_IMAGES+ photos of you, ideally varying
         lighting/angle/distance from the webcam actually being used —
         LBPH generalizes better across conditions it's seen examples of.
+        pin: Security PIN required if AccessControl is configured.
         """
+        self._verify_pin_gate(pin, action="face_enroll")
         if len(jpeg_images) < MIN_ENROLL_IMAGES:
             raise ValueError(f"Need at least {MIN_ENROLL_IMAGES} images to enroll (got {len(jpeg_images)}).")
 

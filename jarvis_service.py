@@ -21,6 +21,7 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Optional, Tuple, List
 
 # ── Make sure we can import from the project folder ───────────────────────────
 # This file lives in the same folder as main.py
@@ -46,6 +47,24 @@ HEARTBEAT_INTERVAL_SECS = 10
 WATCHDOG_CHECK_INTERVAL_SECS = 60
 WATCHDOG_STALE_SECS          = 90
 WATCHDOG_STARTUP_GRACE_SECS  = 60
+
+
+def _write_service_heartbeat(path: Path = HEARTBEAT_PATH) -> None:
+    """Writes the main JARVIS service heartbeat atomically with owner-only DACL."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_hb = path.with_suffix(".tmp")
+        temp_hb.write_text(json.dumps({
+            "pid": os.getpid(), "ts": time.time(),
+        }), encoding="utf-8")
+        temp_hb.replace(path)
+        try:
+            from sentinel.security_utils import apply_owner_only_dacl
+            apply_owner_only_dacl(path)
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 
 def _read_watchdog_heartbeat(path: Path = WATCHDOG_HEARTBEAT_PATH) -> float | None:
@@ -81,23 +100,48 @@ def _check_and_heal_watchdog(
     stale_secs: float = WATCHDOG_STALE_SECS,
     grace_secs: float = WATCHDOG_STARTUP_GRACE_SECS,
     relaunch_fn=None,
+    alert_fn=None,
+    key_path: Path | None = None,
 ) -> tuple[float, float, bool]:
     """Checks watchdog health and relaunches if missing or stale.
-    Respects INTENTIONAL_EXIT_PATH and cooldown windows.
+    Respects cryptographically authenticated INTENTIONAL_EXIT_PATH and cooldown windows.
+    Emits high-priority alerts on detection.
     Returns updated (last_watchdog_relaunch_time, startup_deadline, have_seen_first_hb)."""
-    if intentional_exit_path.exists():
+    from core.watchdog_auth import verify_authenticated_exit_marker
+
+    if verify_authenticated_exit_marker(intentional_exit_path, key_path=key_path):
         return last_watchdog_relaunch_time, startup_deadline, have_seen_first_hb
 
     relaunch = relaunch_fn or _launch_watchdog
     ts = _read_watchdog_heartbeat(heartbeat_path)
     now = time.time()
 
+    def _trigger_alert(reason: str):
+        msg = f"⚠️ [WATCHDOG ALERT] Watchdog process {reason} — auto-relaunch triggered."
+        print(f"[WatchdogMonitor] {msg}")
+        if alert_fn:
+            try:
+                alert_fn(msg)
+            except Exception as e:
+                print(f"[WatchdogMonitor] Failed to send alert via alert_fn: {e}")
+        else:
+            try:
+                from core.telegram_alerter import TelegramAlerter
+                TelegramAlerter().send(msg)
+            except Exception:
+                pass
+            try:
+                from core.audit_log import AuditLog
+                AuditLog().append("watchdog_relaunch_triggered", {"reason": reason, "timestamp": now})
+            except Exception:
+                pass
+
     if ts is not None:
         have_seen_first_hb = True
         age = now - ts
         if age > stale_secs:
             if now - last_watchdog_relaunch_time > grace_secs:
-                print(f"[WatchdogMonitor] ⚠️ Watchdog heartbeat stale ({age:.0f}s old) — relaunching")
+                _trigger_alert(f"heartbeat stale ({age:.0f}s old, limit {stale_secs}s)")
                 relaunch()
                 last_watchdog_relaunch_time = now
                 startup_deadline = now + grace_secs
@@ -106,13 +150,44 @@ def _check_and_heal_watchdog(
         if not have_seen_first_hb and now < startup_deadline:
             pass  # within initial startup grace period
         elif now - last_watchdog_relaunch_time > grace_secs:
-            print("[WatchdogMonitor] ⚠️ Watchdog heartbeat missing — relaunching")
+            _trigger_alert("heartbeat file missing (process not running)")
             relaunch()
             last_watchdog_relaunch_time = now
             startup_deadline = now + grace_secs
             have_seen_first_hb = False
 
     return last_watchdog_relaunch_time, startup_deadline, have_seen_first_hb
+
+
+def _email_wipe_listener_loop(
+    listener: Any = None,
+    poll_interval_secs: float = 60.0,
+    stop_event: threading.Event | None = None,
+) -> None:
+    """
+    Background polling loop monitoring the dedicated inbox for signed emergency wipe commands.
+    Catches per-cycle errors to ensure resilient continuous polling without terminating the loop.
+    Interval: 60 seconds (responsive to emergency triggers while preventing IMAP rate limits).
+    """
+    if listener is None:
+        try:
+            from core.email_wipe_listener import EmailWipeListener
+            listener = EmailWipeListener()
+        except Exception as e:
+            print(f"[EmailWipeListener] Failed to initialize: {e}")
+            return
+
+    while stop_event is None or not stop_event.is_set():
+        try:
+            listener.poll_inbox()
+        except Exception as e:
+            print(f"[EmailWipeListener] Error during inbox polling cycle: {e}")
+
+        if stop_event is not None:
+            if stop_event.wait(timeout=poll_interval_secs):
+                break
+        else:
+            time.sleep(poll_interval_secs)
 
 
 # Intercom audio format — must match the phone-side JS exactly (16kHz mono
@@ -1885,7 +1960,8 @@ class JarvisTrayApp:
         # Tell the watchdog this shutdown was deliberate, not a crash/hang —
         # otherwise it would just relaunch us right after you quit.
         try:
-            INTENTIONAL_EXIT_PATH.write_text(str(time.time()))
+            from core.watchdog_auth import write_authenticated_exit_marker
+            write_authenticated_exit_marker(INTENTIONAL_EXIT_PATH, reason="user_quit")
         except Exception:
             pass
         if self._listener:
@@ -1977,15 +2053,7 @@ if __name__ == "__main__":
         relaunching the watchdog if it dies or hangs (mutual self-healing)."""
         def _service_heartbeat_loop():
             while True:
-                try:
-                    HEARTBEAT_PATH.parent.mkdir(parents=True, exist_ok=True)
-                    temp_hb = HEARTBEAT_PATH.with_suffix(".tmp")
-                    temp_hb.write_text(_json.dumps({
-                        "pid": os.getpid(), "ts": time.time(),
-                    }), encoding="utf-8")
-                    temp_hb.replace(HEARTBEAT_PATH)
-                except Exception:
-                    pass
+                _write_service_heartbeat(HEARTBEAT_PATH)
                 time.sleep(HEARTBEAT_INTERVAL_SECS)
 
         def _watchdog_monitor_loop():
@@ -2004,6 +2072,11 @@ if __name__ == "__main__":
         threading.Thread(target=_service_heartbeat_loop, daemon=True, name="ServiceHeartbeat").start()
         threading.Thread(target=_watchdog_monitor_loop, daemon=True, name="WatchdogMonitor").start()
 
+    def _start_email_wipe_listener_thread():
+        """Starts a background daemon thread polling the dedicated email inbox
+        for cryptographically signed emergency remote wipe commands."""
+        threading.Thread(target=_email_wipe_listener_loop, daemon=True, name="EmailWipeListener").start()
+
     from core.integrity_monitor import verify_on_startup
     if not verify_on_startup():
         print("[Startup] 🚨 CODEBASE INTEGRITY VERIFICATION FAILED. Refusing to start JARVIS service.")
@@ -2016,6 +2089,7 @@ if __name__ == "__main__":
     except Exception:
         pass
     _start_heartbeat_thread()
+    _start_email_wipe_listener_thread()
 
     app = JarvisTrayApp()
     app.run()

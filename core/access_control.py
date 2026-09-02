@@ -87,18 +87,20 @@ class AccessControl:
     while delegating all identity persistence, locking, and hashing to sentinel/auth.
     """
 
-    def __init__(self, path: Optional[Path] = None):
+    def __init__(self, path: Optional[Path] = None, audit_log_path: Optional[Path] = None):
         if path is not None:
             self.legacy_path = Path(path)
             self.auth_dir = self.legacy_path.parent / "auth"
+            default_audit = self.legacy_path.parent / "audit_log.jsonl"
         else:
             self.legacy_path = _base_dir() / "memory" / "access_control.json"
             self.auth_dir = default_settings.auth_dir
+            default_audit = None
 
         self.auth_dir.mkdir(parents=True, exist_ok=True)
         self.legacy_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._audit = AuditLog()
+        self._audit = AuditLog(path=audit_log_path or default_audit)
         self._engine = AuthEngine(auth_dir=self.auth_dir)
 
         # One-time lazy migration of legacy memory/access_control.json if uninitialized
@@ -158,6 +160,64 @@ class AccessControl:
         """Returns True if identity credentials exist in the backing engine."""
         return self._engine.is_initialized()
 
+    def is_tampered(self) -> bool:
+        """
+        Returns True if credentials were previously configured but credentials.json
+        was deleted or corrupted (tampering detected).
+        Checks:
+        1. Local marker file (.auth_initialized).
+        2. Cryptographic audit chain integrity verification (detects modified/deleted records).
+        3. Production AuditLogger mirror-backed chain integrity (if present).
+        4. Cryptographic audit chain history (presence of initialization events on unconfigured system).
+        """
+        if self._engine.enrollment_manager.is_tampered():
+            return True
+
+        # 1. Verify integrity of the audit log chain (detects targeted line deletions/modifications)
+        if self._audit.path.exists():
+            ok, reason = self._audit.verify()
+            if not ok:
+                logger.critical("Audit chain verification failed in is_tampered(): %s", reason)
+                return True
+
+        # 2. Check production Sentinel AuditLogger if present
+        try:
+            from sentinel.audit.chain import AuditLogger, ChainIntegrityError
+            prod_audit_dir = (self.auth_dir.parent / "audit") if self.auth_dir else default_settings.audit_dir
+            if prod_audit_dir.exists():
+                audit_log_file = prod_audit_dir / "audit.jsonl"
+                mirror_state_file = prod_audit_dir / ".audit_mirror_state.json"
+
+                if mirror_state_file.exists() and not audit_log_file.exists():
+                    logger.critical("Production audit.jsonl deleted while mirror state exists — tampering detected.")
+                    return True
+
+                if audit_log_file.exists() and audit_log_file.stat().st_size > 0:
+                    try:
+                        AuditLogger(audit_dir=prod_audit_dir, verify_on_startup=True)
+                    except ChainIntegrityError as cie:
+                        logger.critical("Production AuditLogger chain integrity broken: %s", cie)
+                        return True
+                    except (OSError, IOError, json.JSONDecodeError, ValueError) as io_err:
+                        logger.critical("Production AuditLogger failed with I/O or corruption error: %s", io_err)
+                        return True
+        except ImportError:
+            pass
+
+        # 3. Check for historical initialization events on unconfigured system
+        if not self.is_configured():
+            events = [entry.get("event_type") for entry in self._audit.read_all()]
+            init_events = {
+                "access_control_initialized",
+                "access_control_pin_set",
+                "access_control_dual_pin_enrolled",
+                "legacy_access_control_migrated_success",
+            }
+            if any(ev in init_events for ev in events):
+                return True
+
+        return False
+
     def has_recovery_pin(self) -> bool:
         """Returns True if a recovery PIN is configured in credentials."""
         creds = self._engine.enrollment_manager.get_credentials()
@@ -188,14 +248,19 @@ class AccessControl:
         if success:
             event = "access_control_dual_pin_enrolled" if not current_primary_pin else "access_control_dual_pin_updated"
             self._audit.append(event, {"result": "success"})
+            if not current_primary_pin:
+                self._audit.append("access_control_initialized", {"type": "dual_pin"})
         return success
 
     def set_pin(self, pin: str) -> None:
         """Sets or updates the primary PIN."""
         if len(pin) < 4:
             raise ValueError("PIN must be at least 4 characters — a longer passphrase is stronger.")
+        was_configured = self.is_configured()
         self._engine.enrollment_manager.set_primary_pin_direct(pin)
         self._audit.append("access_control_pin_set", {"result": "success", "type": "primary"})
+        if not was_configured:
+            self._audit.append("access_control_initialized", {"type": "primary"})
 
     def set_recovery_pin(self, pin: str) -> None:
         """Sets or updates the recovery PIN."""

@@ -28,9 +28,17 @@ node_modules/
 # ── Logs & runtime data ──────────────────────────────────────────────────
 memory/debug_jarvis.log
 memory/jarvis_service.log
+memory/watchdog.log
 memory/long_term.json
 memory/bi_data.json
 memory/fcm_token.json
+memory/alert_history.json
+memory/watchdog_heartbeat.json
+memory/jarvis_heartbeat.json
+memory/.email_wipe_nonces.json
+memory/*.marker
+memory/*.dpapi
+memory/*.lock
 
 # ── Agent outputs ────────────────────────────────────────────────────────
 reports/

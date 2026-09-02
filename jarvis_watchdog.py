@@ -46,6 +46,9 @@ CHECK_INTERVAL_SECS      = 15   # how often the watchdog checks health
 HEARTBEAT_STALE_SECS     = 45   # if heartbeat is older than this, consider it hung
 STARTUP_GRACE_SECS       = 60   # don't judge a freshly (re)started process for this long
 PORTS_TO_CLEAR           = (8080, 8081)
+RESTART_STORM_WINDOW_SECS = 300  # 5 minutes
+RESTART_STORM_THRESHOLD   = 3    # 3 restarts within window triggers alert
+_restart_history: list[float] = []
 
 
 def _write_heartbeat():
@@ -57,8 +60,28 @@ def _write_heartbeat():
         data = json.dumps({"pid": os.getpid(), "ts": time.time()})
         temp_file.write_text(data, encoding="utf-8")
         temp_file.replace(WATCHDOG_HEARTBEAT_PATH)
+        try:
+            from sentinel.security_utils import apply_owner_only_dacl
+            apply_owner_only_dacl(WATCHDOG_HEARTBEAT_PATH)
+        except Exception:
+            pass
     except Exception as e:
         _log(f"⚠️ Could not write watchdog heartbeat: {e}")
+
+
+def _alert_restart_storm(count: int, window_secs: int):
+    msg = f"🚨 [WATCHDOG SECURITY ALERT] Rapid restart storm detected: {count} restarts within {window_secs // 60} minutes. Possible service crash loop or malicious tampering."
+    _log(msg)
+    try:
+        from core.telegram_alerter import TelegramAlerter
+        TelegramAlerter().send(msg)
+    except Exception as e:
+        _log(f"Could not send Telegram alert: {e}")
+    try:
+        from core.audit_log import AuditLog
+        AuditLog().append("watchdog_restart_storm_alert", {"restarts_in_window": count, "window_secs": window_secs})
+    except Exception:
+        pass
 
 
 def _log(msg: str):
@@ -138,8 +161,19 @@ def _read_heartbeat():
         return None
 
 
-def _restart(reason: str):
+def _restart(reason: str, alert_fn=None):
+    global _restart_history
+    now = time.time()
+    _restart_history = [t for t in _restart_history if now - t <= RESTART_STORM_WINDOW_SECS]
+    _restart_history.append(now)
+
     _log(f"🔁 Restarting JARVIS — reason: {reason}")
+    if len(_restart_history) >= RESTART_STORM_THRESHOLD:
+        if alert_fn:
+            alert_fn(len(_restart_history), RESTART_STORM_WINDOW_SECS)
+        else:
+            _alert_restart_storm(len(_restart_history), RESTART_STORM_WINDOW_SECS)
+
     _kill_pids_on_ports(PORTS_TO_CLEAR)
     _clear_stale_lock()
     time.sleep(2)  # let the OS actually release the ports
@@ -156,14 +190,15 @@ def main():
     while True:
         _write_heartbeat()
 
-        if INTENTIONAL_EXIT_PATH.exists():
+        from core.watchdog_auth import verify_authenticated_exit_marker
+        if verify_authenticated_exit_marker(INTENTIONAL_EXIT_PATH):
             if not was_in_standby:
-                _log("😴 Intentional quit detected — standing down, will not auto-restart")
+                _log("😴 Authenticated intentional quit detected — standing down, will not auto-restart")
                 was_in_standby = True
             time.sleep(CHECK_INTERVAL_SECS)
             continue
         elif was_in_standby:
-            _log("👀 Intentional-exit marker cleared — resuming normal monitoring")
+            _log("👀 Intentional-exit marker cleared/expired — resuming normal monitoring")
             was_in_standby = False
 
         ts = _read_heartbeat()

@@ -33,6 +33,36 @@ from core.face_verify import FaceVerifier, MIN_ENROLL_IMAGES
 from core.access_control import AccessControl
 
 
+def prompt_pin_for_action(ac: AccessControl, action_name: str = "face enrollment") -> Optional[str]:
+    """
+    Collects owner PIN via getpass if AccessControl is configured.
+    Does not pre-verify the PIN here; passes it directly to FaceVerifier
+    which serves as the single authoritative PIN-verification and audit checkpoint.
+    """
+    if ac.is_tampered():
+        print("CRITICAL: Security credentials have been deleted or corrupted (tampering detected).")
+        print("Refusing face enrollment until system identity is re-verified.")
+        sys.exit(1)
+
+    if not ac.is_configured():
+        print(f"WARNING: No security PIN is configured. {action_name.capitalize()} is proceeding ungated.")
+        return None
+
+    pin = getpass.getpass(f"Enter current Security PIN to authorize {action_name}: ")
+    if not pin:
+        print(f"FAILED: PIN required to authorize {action_name}.")
+        sys.exit(1)
+    return pin
+
+
+def verify_identity_for_action(ac: AccessControl, action_name: str = "face enrollment") -> tuple[bool, Optional[str]]:
+    """
+    Legacy helper for backwards compatibility.
+    """
+    pin = prompt_pin_for_action(ac, action_name)
+    return True, pin
+
+
 def verify_identity_for_reset(ac: AccessControl) -> bool:
     """
     Verifies owner identity before allowing face profile deletion or replacement.
@@ -79,24 +109,33 @@ def main():
                          help=f"How many photos to capture (min {MIN_ENROLL_IMAGES}).")
     args = parser.parse_args()
 
-    fv = FaceVerifier()
     ac = AccessControl()
+    fv = FaceVerifier(access_control=ac)
 
     if args.reset:
-        if not verify_identity_for_reset(ac):
+        pin = prompt_pin_for_action(ac, action_name="face profile reset")
+        try:
+            fv.reset(pin=pin)
+            print("Face profile deleted. Run without --reset to enroll again.")
+        except PermissionError as e:
+            print(f"FAILED: {e}")
             sys.exit(1)
-        fv.reset()
-        print("Face profile deleted. Run without --reset to enroll again.")
         return
 
+    pin = None
     if fv.is_enrolled():
         answer = input("A face profile already exists. Replace it? [y/N]: ").strip().lower()
         if answer != "y":
             print("Cancelled - existing profile kept.")
             return
-        if not verify_identity_for_reset(ac):
+        pin = prompt_pin_for_action(ac, action_name="face profile reset")
+        try:
+            fv.reset(pin=pin)
+        except PermissionError as e:
+            print(f"FAILED: {e}")
             sys.exit(1)
-        fv.reset()
+    else:
+        pin = prompt_pin_for_action(ac, action_name="face enrollment")
 
     n_images = max(args.images, MIN_ENROLL_IMAGES)
     print(f"\nCapturing {n_images} photos. Look at the camera; move slightly between shots.\n")
@@ -119,8 +158,8 @@ def main():
 
     print("\nTraining face profile...")
     try:
-        fv.enroll(images)
-    except ValueError as e:
+        fv.enroll(images, pin=pin)
+    except (ValueError, PermissionError) as e:
         print(f"\nEnrollment failed: {e}")
         sys.exit(1)
 
