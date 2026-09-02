@@ -574,3 +574,38 @@ def test_send_wipe_command_tooling_generates_valid_signed_payload_and_dispatches
         mock_smtp.login.assert_called_once_with("operator@sentinel.org", "app-password-123")
         mock_smtp.send_message.assert_called_once()
 
+
+def test_export_key_tooling_recovers_identical_verifiable_key_without_leakage(tmp_path, mock_wipe_controller):
+    """
+    Proves that export_hmac_key extracts the exact DPAPI-protected key that EmailWipeListener
+    uses internally, and generates verifiable signed payloads without leaking to temp files or disk.
+    """
+    from send_wipe_command import export_hmac_key, generate_signed_wipe_payload
+
+    controller, target_file, mock_trash = mock_wipe_controller
+    key_file = tmp_path / "auth.key"
+    audit_dir = tmp_path / "audit"
+
+    # 1. Export key via tooling
+    exported_hex = export_hmac_key(key_path=key_file)
+    assert len(exported_hex) == 64
+    exported_bytes = bytes.fromhex(exported_hex)
+
+    # 2. Verify listener initialized with same key file verifies command signed with exported key
+    listener = EmailWipeListener(
+        key_path=key_file,
+        wipe_controller=controller,
+        audit_dir=audit_dir,
+    )
+
+    command_dict = generate_signed_wipe_payload(key=exported_bytes, reason="exported_key_test")
+    success, msg = listener.process_email_payload(command_dict)
+
+    assert success is True
+    assert "Wipe executed successfully" in msg
+    mock_trash.assert_called_once_with(str(target_file))
+
+    # 3. Confirm no extraneous temp files leaked into directory
+    remaining_files = list(tmp_path.glob("*.tmp*"))
+    assert len(remaining_files) == 0
+

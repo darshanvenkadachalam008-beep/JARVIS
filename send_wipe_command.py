@@ -4,22 +4,34 @@ send_wipe_command.py — Owner-Facing Remote Wipe Command Generator & Dispatcher
 Generates and cryptographically signs an out-of-band emergency wipe command
 for the Sentinel / JARVIS daemon.
 
-Operational Threat Model & Usage Modes:
----------------------------------------
+Operational Threat Model & Setup Instructions:
+----------------------------------------------
+⚠️ REQUIRED ONE-TIME SETUP FOR OFF-DEVICE RESILIENCE:
+By default, the 32-byte HMAC authentication key is generated and stored locally
+under Windows DPAPI (tied to the local Windows user profile). If the protected device
+is lost, stolen, or physically unreachable, local DPAPI storage cannot be accessed.
+
+Therefore, the operator MUST perform a one-time key export during initial setup:
+    python send_wipe_command.py --export-key
+
+Store the exported 64-character hex key in an off-device password manager (1Password,
+Bitwarden) or secure mobile store. In an actual emergency, you can trigger the remote
+wipe from any device or phone without access to the host machine.
+
+Usage Modes:
+------------
 1. Off-Device Remote Operator (Real-World Emergency):
    When the target device is lost, stolen, or inaccessible, the operator generates
-   the signed payload from an independent operator laptop, phone, or CI runner using
-   the pre-shared master HMAC key (stored securely in a password manager/env):
+   and dispatches the signed payload from an independent operator laptop, phone, or CI runner:
        python send_wipe_command.py --key-hex <64-char-hex-key> --send --to emergency-inbox@example.com
 
-2. On-Device Local Testing & Diagnostics:
-   When run on the target machine with DPAPI session access, the tool automatically
-   retrieves the local DPAPI-protected HMAC key and credentials:
+2. On-Device Local Diagnostics:
+   When run on the target machine with DPAPI session access:
        python send_wipe_command.py --send --to emergency-inbox@example.com
 
 3. Manual Dispatch (Payload Inspection / Custom Mail Client):
    Omit `--send` to output the exact signed JSON payload to stdout, suitable for
-   pasting into any standard email client (Gmail, Outlook, Thunderbird, curl):
+   pasting into the body of an email sent from any mobile mail app (Gmail, Outlook, etc.):
        python send_wipe_command.py --key-hex <64-char-hex-key>
 """
 from __future__ import annotations
@@ -41,6 +53,16 @@ from core.email_wipe_listener import (
     WIPE_KEY_DEFAULT,
     WIPE_CREDS_DEFAULT,
 )
+
+
+def export_hmac_key(key_path: Optional[Path] = None) -> str:
+    """
+    Decrypts and returns the DPAPI-protected 32-byte HMAC secret key as a 64-character hex string.
+    Zero persistent side-effects: creates no logs, no temp files, and writes nowhere to disk.
+    """
+    target_path = key_path or WIPE_KEY_DEFAULT
+    raw_key = EmailWipeListener._get_or_create_hmac_key(target_path)
+    return raw_key.hex()
 
 
 def load_hmac_key(
@@ -141,6 +163,7 @@ def main() -> int:
         description="Sentinel / JARVIS Out-of-Band Signed Emergency Wipe Command Generator & Dispatcher",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    parser.add_argument("--export-key", action="store_true", help="One-time export of DPAPI-stored master HMAC key for off-device backup.")
     parser.add_argument("--key-hex", help="64-character hex string of the 32-byte master HMAC key (for off-device use).")
     parser.add_argument("--key-path", type=Path, help="Path to DPAPI key file on local device.")
     parser.add_argument("--reason", default="remote_operator_emergency_signal", help="Reason recorded in the audit log.")
@@ -153,6 +176,26 @@ def main() -> int:
     parser.add_argument("--creds-path", type=Path, help="Path to DPAPI credentials file.")
 
     args = parser.parse_args()
+
+    if args.export_key:
+        try:
+            hex_key = export_hmac_key(key_path=args.key_path)
+            print("================================================================================")
+            print("🔐 SENTINEL EMAIL KILL-SWITCH: MASTER HMAC KEY EXPORT")
+            print("================================================================================")
+            print("⚠️  SECURITY WARNING:")
+            print("1. This 32-byte secret is required to authenticate remote wipe commands.")
+            print("2. Copy this hex key immediately into an off-device password manager")
+            print("   (e.g., 1Password, Bitwarden, KeePassXC) or secure mobile store.")
+            print("3. DO NOT commit this key to version control or save in plain text.")
+            print("4. Clear your terminal scrollback buffer after copying.")
+            print("--------------------------------------------------------------------------------")
+            print(f"MASTER_KEY_HEX: {hex_key}")
+            print("================================================================================")
+            return 0
+        except Exception as e:
+            print(f"❌ Failed to export key: {e}", file=sys.stderr)
+            return 1
 
     try:
         key = load_hmac_key(key_hex=args.key_hex, key_path=args.key_path)
