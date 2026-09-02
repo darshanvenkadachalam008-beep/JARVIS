@@ -805,6 +805,17 @@ class JarvisSession:
             self._speaking_since = None
         if self._wake_listener:
             self._wake_listener.resume()
+        try:
+            import pygame
+            if pygame.mixer.get_init():
+                pygame.mixer.music.stop()
+        except Exception:
+            pass
+        try:
+            import sounddevice as _sd
+            _sd.stop()
+        except Exception:
+            pass
         if self.audio_in_queue:
             while not self.audio_in_queue.empty():
                 try:
@@ -813,7 +824,7 @@ class JarvisSession:
                     break
         if not self.ui.muted:
             self.ui.set_state("LISTENING")
-        print("[BARGE-IN] 🛑 Interrupted JARVIS playback; drained audio queue and returned to LISTENING.")
+        print("[BARGE-IN] 🛑 Interrupted JARVIS playback; drained audio queue, halted TTS, and returned to LISTENING.")
 
     def _on_wake_sensitivity_changed(self, value: float):
         if self._wake_listener:
@@ -933,7 +944,7 @@ class JarvisSession:
                 search_result = r or "No results found."
                 threading.Thread(
                     target=_speak_via_edge_tts,
-                    args=(search_result, self.ui),
+                    args=(search_result, self.ui, self.set_speaking),
                     daemon=True
                 ).start()
                 result = "[SEARCH_RESULT_DELIVERED_VIA_EDGE_TTS] The search result is already being spoken aloud by the edge-tts engine. Do NOT repeat or summarise it. Stay completely silent."
@@ -961,7 +972,7 @@ class JarvisSession:
             elif name == "daily_briefing":
                 keepalive = asyncio.ensure_future(self._keepalive_during_tool())
                 try:
-                    result = await loop.run_in_executor(None, lambda: _handle_daily_briefing(args, self.speak, ui=self.ui))
+                    result = await loop.run_in_executor(None, lambda: _handle_daily_briefing(args, self.speak, ui=self.ui, set_speaking=self.set_speaking))
                 finally:
                     keepalive.cancel()
             elif name == "set_briefing_schedule": result = await loop.run_in_executor(None, lambda: _handle_set_briefing_schedule(args))
@@ -991,7 +1002,7 @@ class JarvisSession:
                 report = r or "Agent task completed with no output."
                 threading.Thread(
                     target=_speak_via_edge_tts,
-                    args=(_clean_report_for_speech(report), self.ui),
+                    args=(_clean_report_for_speech(report), self.ui, self.set_speaking),
                     daemon=True
                 ).start()
                 result = (

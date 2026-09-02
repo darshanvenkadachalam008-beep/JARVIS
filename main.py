@@ -1205,29 +1205,10 @@ def _clean_report_for_speech(text: str) -> str:
     return t.strip() or "Task completed. Full details are in the activity log."
 
 
-def _speak_via_edge_tts(text: str, ui=None) -> None:
+def _speak_via_edge_tts(text: str, ui=None, set_speaking=None) -> None:
     """
     Speak `text` using edge-tts (Microsoft Neural TTS) in a fire-and-forget
     thread.
-
-    Voice quality notes:
-      • en-GB-RyanNeural is used as the primary voice — a calm, precise
-        British neural voice that reads naturally close to a JARVIS-style
-        assistant, noticeably less flat than the previous en-US-GuyNeural
-        default. en-US-GuyNeural remains as an automatic fallback if Ryan
-        is ever unavailable on the Microsoft endpoint.
-      • Rate and pitch are tuned slightly down for a calmer, more deliberate
-        delivery rather than the default "announcer" pacing.
-      • Text is pre-cleaned via _clean_report_for_speech() by the caller
-        before reaching here where appropriate (reports/logs); plain
-        conversational lines are passed through as-is.
-
-    Audio playback priority:
-      1. sounddevice + pydub  (PCM streaming, no temp file)
-      2. pygame               (plays mp3 directly from temp file, no OS player)
-      3. pyttsx3              (offline fallback if edge-tts is not installed)
-
-    NEVER calls os.startfile or opens any external media player.
     """
     import io
     import tempfile
@@ -1236,6 +1217,18 @@ def _speak_via_edge_tts(text: str, ui=None) -> None:
     FALLBACK_VOICE = "en-US-GuyNeural"
     RATE  = "+2%"
     PITCH = "-2Hz"
+
+    def _safe_set_speaking(state: bool):
+        if set_speaking:
+            try:
+                set_speaking(state)
+            except Exception:
+                pass
+        elif ui and hasattr(ui, 'set_speaking'):
+            try:
+                ui.set_speaking(state)
+            except Exception:
+                pass
 
     def _play_mp3_pygame(mp3_buf: "io.BytesIO") -> None:
         """Play an in-memory MP3 using pygame.mixer — no external player."""
@@ -1254,11 +1247,16 @@ def _speak_via_edge_tts(text: str, ui=None) -> None:
                 pygame.mixer.init(frequency=24000, size=-16, channels=1, buffer=512)
 
             pygame.mixer.music.load(tmp_path)
+            _safe_set_speaking(True)
             pygame.mixer.music.play()
             while pygame.mixer.music.get_busy():
                 _time.sleep(0.05)
         finally:
-            pygame.mixer.music.stop()
+            _safe_set_speaking(False)
+            try:
+                pygame.mixer.music.stop()
+            except Exception:
+                pass
             if tmp_path:
                 try:
                     os.unlink(tmp_path)
@@ -1289,15 +1287,6 @@ def _speak_via_edge_tts(text: str, ui=None) -> None:
                 mp3_buf = await _synthesize(FALLBACK_VOICE)
 
             # ── Strategy 1: pygame (no subprocess, no console window) ────────
-            # BUGFIX: this used to be Strategy 2, behind pydub. pydub's
-            # AudioSegment.from_file() shells out to ffmpeg via
-            # subprocess.Popen() for every single spoken line, with no
-            # CREATE_NO_WINDOW flag — on Windows that flashes a console
-            # window open each time JARVIS speaks ("opens another terminal
-            # to voice up") and the process-spawn overhead also makes speech
-            # noticeably slower to start. pygame.mixer plays MP3 directly via
-            # a compiled SDL_mixer extension — no subprocess, no window,
-            # and it starts faster. Tried first now; pydub is the fallback.
             try:
                 _play_mp3_pygame(mp3_buf)
                 return
@@ -1309,12 +1298,15 @@ def _speak_via_edge_tts(text: str, ui=None) -> None:
                 from pydub import AudioSegment
                 seg = AudioSegment.from_file(mp3_buf, format="mp3")
                 pcm = _np.frombuffer(seg.raw_data, dtype=_np.int16)
+                _safe_set_speaking(True)
                 _sd.play(pcm, samplerate=seg.frame_rate)
                 _sd.wait()
                 return
             except Exception as e:
                 if ui:
                     ui.write_log(f"SYS: pydub/ffmpeg playback failed — {e}")
+            finally:
+                _safe_set_speaking(False)
 
         _aio.run(_run())
 
@@ -1328,18 +1320,22 @@ def _speak_via_edge_tts(text: str, ui=None) -> None:
                 if "david" in v.name.lower() or "mark" in v.name.lower() or "ryan" in v.name.lower():
                     engine.setProperty("voice", v.id)
                     break
+            _safe_set_speaking(True)
             engine.say(text)
             engine.runAndWait()
         except Exception as e:
             if ui:
                 ui.write_log(f"SYS: edge-tts not installed. pip install edge-tts  ({e})")
+        finally:
+            _safe_set_speaking(False)
     except Exception as e:
         if ui:
             ui.write_log(f"SYS: edge-tts error — {e}")
+        _safe_set_speaking(False)
 
 
 
-def _handle_daily_briefing(args: dict, speak_fn: callable, ui=None, **_kwargs) -> str:
+def _handle_daily_briefing(args: dict, speak_fn: callable, ui=None, set_speaking=None, **_kwargs) -> str:
     """
     Assembles the full briefing, writes it to the activity log, and speaks
     the ENTIRE text via edge-tts in a background thread.
@@ -1429,7 +1425,7 @@ def _handle_daily_briefing(args: dict, speak_fn: callable, ui=None, **_kwargs) -
     # ── Speak via edge-tts in background — does NOT block Gemini session ─────
     threading.Thread(
         target=_speak_via_edge_tts,
-        args=(full_speech, ui),
+        args=(full_speech, ui, set_speaking),
         daemon=True
     ).start()
 
@@ -1942,6 +1938,17 @@ class JarvisLive:
             self._is_speaking = False
             self._speaking_since = None
         self._wake_detector.resume()
+        try:
+            import pygame
+            if pygame.mixer.get_init():
+                pygame.mixer.music.stop()
+        except Exception:
+            pass
+        try:
+            import sounddevice as _sd
+            _sd.stop()
+        except Exception:
+            pass
         if self.audio_in_queue:
             while not self.audio_in_queue.empty():
                 try:
@@ -1951,7 +1958,7 @@ class JarvisLive:
         if not self.ui.muted:
             self.ui.set_state("LISTENING")
         self._state_manager.begin_conversation()
-        print("[BARGE-IN] 🛑 Interrupted JARVIS playback; drained audio queue and returned to LISTENING.")
+        print("[BARGE-IN] 🛑 Interrupted JARVIS playback; drained audio queue, halted TTS, and returned to LISTENING.")
 
     def speak(self, text: str):
         if not self._loop or not self.session:
