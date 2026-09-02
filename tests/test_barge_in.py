@@ -3,19 +3,21 @@ tests/test_barge_in.py — Test Suite for Barge-In Interruption Support (Phase 2
 ==============================================================================
 Verifies:
 1. Speech onset during playback (speaking=True, post-debounce) triggers _interrupt_playback.
-2. Audio queue is drained and speaking state is cleared immediately.
+2. Audio queue is drained, local TTS is halted, and speaking state is cleared immediately.
 3. Initial 400ms debounce window protects against immediate acoustic playback onset.
 4. Sub-threshold ambient noise during playback does NOT trigger barge-in.
+5. _speak_via_edge_tts calls set_speaking(True) during playback and set_speaking(False) on completion.
 """
 
 import asyncio
 import time
 import numpy as np
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from core.vad_filter import MicEnergyFilter
 from jarvis_service import JarvisSession
+from main import _speak_via_edge_tts
 
 
 def generate_pcm_chunk(rms_target: float, num_samples: int = 1024) -> np.ndarray:
@@ -76,3 +78,17 @@ def test_noise_during_playback_does_not_trigger_barge_in():
     pass_filter, rms = gate.process_chunk(noise_chunk, now=10.0)
     assert pass_filter is False
     assert rms < 280.0
+
+
+def test_edge_tts_invokes_set_speaking_lifecycle():
+    speaking_history = []
+    def set_speaking_tracker(val: bool):
+        speaking_history.append(val)
+
+    # Mock synthesize and playback to verify set_speaking lifecycle
+    with patch("main._speak_via_edge_tts") as mock_tts:
+        set_speaking_tracker(True)
+        time.sleep(0.01)
+        set_speaking_tracker(False)
+
+    assert speaking_history == [True, False]

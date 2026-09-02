@@ -944,7 +944,7 @@ class JarvisSession:
                 search_result = r or "No results found."
                 threading.Thread(
                     target=_speak_via_edge_tts,
-                    args=(search_result, self.ui, self.set_speaking),
+                    args=(_clean_report_for_speech(search_result), self.ui, self.set_speaking),
                     daemon=True
                 ).start()
                 result = "[SEARCH_RESULT_DELIVERED_VIA_EDGE_TTS] The search result is already being spoken aloud by the edge-tts engine. Do NOT repeat or summarise it. Stay completely silent."

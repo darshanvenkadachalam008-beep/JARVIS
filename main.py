@@ -2239,7 +2239,7 @@ class JarvisLive:
                 # timeout/disconnect this project has already hit once before).
                 threading.Thread(
                     target=_speak_via_edge_tts,
-                    args=(_clean_report_for_speech(report), self.ui),
+                    args=(_clean_report_for_speech(report), self.ui, self.set_speaking),
                     daemon=True
                 ).start()
                 result = (
@@ -2262,7 +2262,7 @@ class JarvisLive:
                 # Cleaned first so markdown links/brackets aren't read literally.
                 threading.Thread(
                     target=_speak_via_edge_tts,
-                    args=(_clean_report_for_speech(search_result), self.ui),
+                    args=(_clean_report_for_speech(search_result), self.ui, self.set_speaking),
                     daemon=True
                 ).start()
                 result = "[SEARCH_RESULT_DELIVERED_VIA_EDGE_TTS] The search result is already being spoken aloud by the edge-tts engine. Do NOT repeat or summarise it. Stay completely silent."
@@ -2301,7 +2301,7 @@ class JarvisLive:
                 keepalive = asyncio.ensure_future(self._keepalive_during_tool())
                 try:
                     result = await loop.run_in_executor(
-                        None, lambda: _handle_daily_briefing(args, self.speak, ui=self.ui)
+                        None, lambda: _handle_daily_briefing(args, self.speak, ui=self.ui, set_speaking=self.set_speaking)
                     )
                 finally:
                     keepalive.cancel()
