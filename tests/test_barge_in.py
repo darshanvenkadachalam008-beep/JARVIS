@@ -1,19 +1,24 @@
 """
-tests/test_barge_in.py — Test Suite for Barge-In Interruption Support (Phase 2)
-==============================================================================
+tests/test_barge_in.py — Test Suite for Barge-In Interruption & TTS Lifecycle (Phase 2)
+=====================================================================================
 Verifies:
 1. Speech onset during playback (speaking=True, post-debounce) triggers _interrupt_playback.
 2. Audio queue is drained, local TTS is halted, and speaking state is cleared immediately.
 3. Initial 400ms debounce window protects against immediate acoustic playback onset.
 4. Sub-threshold ambient noise during playback does NOT trigger barge-in.
-5. _speak_via_edge_tts calls set_speaking(True) during playback and set_speaking(False) on completion.
+5. Real _speak_via_edge_tts function invokes set_speaking(True) and set_speaking(False) as direct side-effects.
+6. AST check across main.py and jarvis_service.py proves every _speak_via_edge_tts thread passes set_speaking.
 """
 
+import ast
 import asyncio
+import io
+import sys
 import time
+from pathlib import Path
+from unittest.mock import MagicMock, call, patch
 import numpy as np
 import pytest
-from unittest.mock import MagicMock, patch
 
 from core.vad_filter import MicEnergyFilter
 from jarvis_service import JarvisSession
@@ -80,15 +85,76 @@ def test_noise_during_playback_does_not_trigger_barge_in():
     assert rms < 280.0
 
 
-def test_edge_tts_invokes_set_speaking_lifecycle():
-    speaking_history = []
-    def set_speaking_tracker(val: bool):
-        speaking_history.append(val)
+def test_real_speak_via_edge_tts_executes_set_speaking_lifecycle():
+    """
+    Executes the REAL _speak_via_edge_tts function with a mock set_speaking callback.
+    Stubs only the synthesize stream generator and pygame playback loop via sys.modules.
+    Asserts set_speaking is called with True before playback and False in finally block.
+    """
+    mock_set_speaking = MagicMock()
 
-    # Mock synthesize and playback to verify set_speaking lifecycle
-    with patch("main._speak_via_edge_tts") as mock_tts:
-        set_speaking_tracker(True)
-        time.sleep(0.01)
-        set_speaking_tracker(False)
+    class FakeCommunicate:
+        def __init__(self, *args, **kwargs):
+            pass
+        async def stream(self):
+            yield {"type": "audio", "data": b"\xff\xfb\x90\x64" + b"\x00" * 32}
 
-    assert speaking_history == [True, False]
+    mock_pygame = MagicMock()
+    mock_pygame.mixer.get_init.return_value = True
+    mock_pygame.mixer.music.get_busy.side_effect = [True, False]
+
+    fake_edge_tts = MagicMock()
+    fake_edge_tts.Communicate = FakeCommunicate
+
+    with patch.dict(sys.modules, {"pygame": mock_pygame, "edge_tts": fake_edge_tts}):
+        # Call real production _speak_via_edge_tts
+        _speak_via_edge_tts("Test speech output", ui=None, set_speaking=mock_set_speaking)
+
+    # Verify real function invoked mock_set_speaking(True) then mock_set_speaking(False)
+    assert mock_set_speaking.call_args_list == [call(True), call(False)]
+
+
+def test_all_edge_tts_thread_call_sites_pass_set_speaking():
+    """
+    Statically analyzes AST of main.py and jarvis_service.py.
+    Finds every threading.Thread instantiation with target=_speak_via_edge_tts.
+    Proves that every single one passes set_speaking as the 3rd positional element.
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+
+    for fname in ["main.py", "jarvis_service.py"]:
+        fpath = repo_root / fname
+        tree = ast.parse(fpath.read_text(encoding="utf-8"))
+
+        call_sites_found = 0
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                # Look for threading.Thread(target=_speak_via_edge_tts, ...)
+                is_thread_call = False
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "Thread":
+                    is_thread_call = True
+
+                if is_thread_call:
+                    target_kw = next((kw for kw in node.keywords if kw.arg == "target"), None)
+                    if target_kw and isinstance(target_kw.value, ast.Name) and target_kw.value.id == "_speak_via_edge_tts":
+                        call_sites_found += 1
+                        # Find args=(...) keyword
+                        args_kw = next((kw for kw in node.keywords if kw.arg == "args"), None)
+                        assert args_kw is not None, f"Call site in {fname} missing args keyword"
+                        assert isinstance(args_kw.value, ast.Tuple), f"args in {fname} must be a tuple"
+                        
+                        # Assert tuple has at least 3 elements
+                        assert len(args_kw.value.elts) >= 3, (
+                            f"Call site in {fname} has only {len(args_kw.value.elts)} args! "
+                            f"Must pass set_speaking as 3rd arg."
+                        )
+                        # Check 3rd element name/attribute
+                        third_arg = args_kw.value.elts[2]
+                        if isinstance(third_arg, ast.Attribute):
+                            assert third_arg.attr == "set_speaking"
+                        elif isinstance(third_arg, ast.Name):
+                            assert third_arg.id == "set_speaking"
+                        else:
+                            pytest.fail(f"Unexpected 3rd arg type in {fname}: {ast.dump(third_arg)}")
+
+        assert call_sites_found > 0, f"No _speak_via_edge_tts thread call sites found in {fname}"
