@@ -28,6 +28,10 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives import serialization
 from cryptography.exceptions import InvalidSignature
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
 from core.audit_log import AuditLog
 
 logger = logging.getLogger(__name__)
@@ -380,11 +384,107 @@ def verify_on_startup() -> bool:
 
     report = monitor.verify_integrity(alert_callback=_alert_telegram)
     if not report.is_valid:
-        print(f"[IntegrityMonitor] 🚨 {report.details}")
+        print(f"[IntegrityMonitor] [CRITICAL] {report.details}")
         print(f"  Tampered files: {report.tampered_files}")
         print(f"  Missing files: {report.missing_files}")
         print(f"  Untracked files: {report.new_untracked_files}")
         return False
 
-    print("[IntegrityMonitor] ✅ Codebase integrity verified (Ed25519 signed manifest valid)")
+    print("[IntegrityMonitor] [OK] Codebase integrity verified (Ed25519 signed manifest valid)")
     return True
+
+
+if __name__ == "__main__":
+    import argparse
+    import getpass
+
+    parser = argparse.ArgumentParser(
+        description="Sentinel / JARVIS Codebase & Startup Integrity Monitor Tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--init", action="store_true", help="Generate a new Ed25519 keypair, sign the codebase manifest, and pin the public key.")
+    parser.add_argument("--update", action="store_true", help="Re-sign the codebase manifest using an existing Ed25519 private key.")
+    parser.add_argument("--private-key", help="Path to Ed25519 private key file or PEM string (for --update).")
+    parser.add_argument("--save-private-key", type=Path, help="Optional path to save the generated private key (e.g. to a secure backup directory or USB drive).")
+    parser.add_argument("--pin", help="Admin PIN (if access control is configured).")
+    parser.add_argument("--verify", action="store_true", help="Verify codebase integrity against pinned public key.")
+
+    args = parser.parse_args()
+
+    if args.init:
+        print("[*] Generating new Ed25519 keypair for Codebase Integrity Baseline...")
+        priv, pub = generate_keypair()
+        priv_pem = export_private_key_pem(priv)
+        pub_pem = export_public_key_pem(pub)
+
+        pin = args.pin or ""
+        ac = None
+        if pin:
+            try:
+                from core.access_control import AccessControl
+                ac = AccessControl()
+            except Exception:
+                pass
+
+        monitor = IntegrityMonitor()
+        payload = monitor.generate_baseline(private_key=priv, pin=pin, access_control=ac)
+
+        # Ensure public key is written to memory/integrity_pubkey.pem
+        monitor.public_key_path.write_text(pub_pem, encoding="utf-8")
+
+        print("================================================================================")
+        print("[SUCCESS] INTEGRITY BASELINE GENERATED SUCCESSFULLY")
+        print("================================================================================")
+        print(f"Manifest written to:   {monitor.manifest_path}")
+        print(f"Public key pinned to:  {monitor.public_key_path}")
+        print(f"Monitored files:       {payload['manifest']['file_count']}")
+        print(f"Key fingerprint:       {payload['public_key_fingerprint']}")
+        print("================================================================================")
+        print("[SECURITY NOTICE] ED25519 PRIVATE SIGNING KEY:")
+        print("Per the C10 design, the private key must be kept OUT-OF-BAND (offline vault, password manager).")
+        print("If you lose this key, you cannot generate updates to the manifest without generating")
+        print("a new keypair and re-pinning the public key.")
+        print("--------------------------------------------------------------------------------")
+        print(priv_pem)
+        print("================================================================================")
+
+        if args.save_private_key:
+            try:
+                args.save_private_key.parent.mkdir(parents=True, exist_ok=True)
+                args.save_private_key.write_text(priv_pem, encoding="utf-8")
+                try:
+                    from sentinel.security_utils import apply_owner_only_dacl
+                    apply_owner_only_dacl(args.save_private_key)
+                except Exception:
+                    pass
+                print(f"[+] Private key also saved to: {args.save_private_key}")
+            except Exception as e:
+                print(f"[!] Failed to save private key to specified path: {e}")
+
+        sys.exit(0)
+
+    elif args.update:
+        if not args.private_key:
+            print("[-] --private-key <path_or_pem> is required when --update is specified.", file=sys.stderr)
+            sys.exit(1)
+
+        pin = args.pin or ""
+        try:
+            from core.access_control import AccessControl
+            ac = AccessControl()
+            if ac.is_configured() and not pin:
+                pin = getpass.getpass("Enter Admin PIN to authorize baseline generation: ")
+        except Exception:
+            ac = None
+
+        monitor = IntegrityMonitor()
+        payload = monitor.generate_baseline(private_key=args.private_key, pin=pin, access_control=ac)
+        print(f"[+] Integrity manifest updated. Files monitored: {payload['manifest']['file_count']}")
+        sys.exit(0)
+
+    else:
+        # Default action: verify
+        success = verify_on_startup()
+        sys.exit(0 if success else 1)
+
+
