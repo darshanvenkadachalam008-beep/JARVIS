@@ -32,6 +32,7 @@ from google.genai import types
 # ── Local modules ─────────────────────────────────────────────────────────────
 from ui import JarvisUI
 from core.wake_word import WakeWordEngine
+from core.vad_filter import MicEnergyFilter, DEFAULT_NOISE_FLOOR_RMS
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     should_extract_memory, extract_memory,
@@ -182,6 +183,31 @@ def _save_vad_patience(value: float) -> None:
     except Exception:
         pass
     data["vad_patience"] = value
+    API_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(API_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def _get_noise_floor_rms() -> float:
+    """Load saved mic noise floor threshold from config/api_keys.json."""
+    try:
+        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return float(data.get("mic_noise_floor_rms", DEFAULT_NOISE_FLOOR_RMS))
+    except Exception:
+        return DEFAULT_NOISE_FLOOR_RMS
+
+
+def _save_noise_floor_rms(value: float) -> None:
+    """Persist mic noise floor threshold so it survives restarts."""
+    value = max(10.0, min(5000.0, float(value)))
+    data: dict = {}
+    try:
+        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        pass
+    data["mic_noise_floor_rms"] = value
     API_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(API_CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
@@ -1549,6 +1575,9 @@ class JarvisLive:
         self._memory_editor = None
         self.ui.on_open_memory_editor = self._open_memory_editor_ui
 
+        # Phase 1: Energy-based mic pre-filter (drops ambient noise before Gemini queue)
+        self._mic_filter = MicEnergyFilter(threshold_rms=_get_noise_floor_rms())
+
         # Phase 1: proactive briefing scheduler
         self._briefing_scheduler = BriefingScheduler(on_briefing=self._on_scheduled_briefing)
 
@@ -2654,10 +2683,12 @@ class JarvisLive:
     async def _listen_audio(self):
         print("[JARVIS] 🎤 Mic started")
         loop = asyncio.get_event_loop()
-        # PHASE 1 GAP FIX: throttle state shared between mic callback calls
-        # (callback fires on a sounddevice audio thread, ~10-20x/sec at
-        # CHUNK_SIZE) so the UI only gets a fresh sample a few times a
-        # second — plenty smooth for a halo pulse, without flooding Qt.
+        diag_state = {
+            "last_log": 0.0,
+            "sent_count": 0,
+            "blocked_count": 0,
+            "noise_dropped_count": 0,
+        }
         last_level_push = [0.0]
 
         def callback(indata, frames, time_info, status):
@@ -2668,51 +2699,51 @@ class JarvisLive:
             state = self._state_manager.state
             from core.states import JarvisState as _JS
             audio_allowed = state in (_JS.LISTENING, _JS.ACTIVE_CONVERSATION)
-            # BUGFIX: a tool call (web_search, persona_task, daily_briefing, etc.)
-            # can legitimately run for 10-40+ seconds via run_in_executor while
-            # the keepalive coroutine pings the WebSocket with silent audio.
-            # _tool_in_flight was previously only read once (to decide whether
-            # to allow SLEEPING afterward) — the mic stayed open the whole time,
-            # so anything the user said mid-tool-call (e.g. "tell me") landed on
-            # Gemini as a brand-new conversational turn with no tool result yet,
-            # producing a confused generic reply, and a second utterance could
-            # trigger a duplicate/overlapping tool call that helped tip the
-            # WebSocket into a disconnect. Block mic audio entirely while a tool
-            # is in flight — the report will be spoken aloud the moment it's
-            # ready, so nothing is lost by staying quiet for those few seconds.
             if self._tool_in_flight:
                 audio_allowed = False
-            if not jarvis_speaking and not self.ui.muted and audio_allowed:
-                data = indata.tobytes()
-                def add_audio():
-                    try:
-                        self.out_queue.put_nowait({"data": data, "mime_type": "audio/pcm"})
-                    except asyncio.QueueFull:
-                        pass
-                loop.call_soon_threadsafe(add_audio)
 
-                # PHASE 1 GAP FIX: real voice-reactive hologram pulse. RMS of
-                # this chunk, normalized against int16 full-scale, pushed to
-                # the UI a few times a second — this is what makes "louder =
-                # bigger pulse" an actual measurement instead of
-                # random.uniform(). Wrapped in try/except: this is a visual
-                # nicety, never worth taking down the mic stream over.
-                now_t = time.time()
-                if now_t - last_level_push[0] > 0.08:
+            now = time.time()
+            allowed = not jarvis_speaking and not self.ui.muted and audio_allowed
+
+            if not allowed:
+                diag_state["blocked_count"] += 1
+                self._mic_filter.reset()
+            else:
+                # Energy-based VAD pre-filter with hangover
+                pass_filter, rms = self._mic_filter.process_chunk(indata, now=now)
+                if not pass_filter:
+                    diag_state["noise_dropped_count"] += 1
+                else:
+                    diag_state["sent_count"] += 1
+                    data = indata.tobytes()
+                    self._touch_activity()
+                    def add_audio():
+                        try:
+                            self.out_queue.put_nowait({"data": data, "mime_type": "audio/pcm"})
+                        except asyncio.QueueFull:
+                            pass
+                    loop.call_soon_threadsafe(add_audio)
+
+                    # Real voice-reactive hologram pulse (gated strictly on speech passing filter)
+                    if now - last_level_push[0] > 0.08:
+                        try:
+                            level = min(1.0, rms / 3000.0)
+                            self.ui.set_audio_level(level)
+                        except Exception:
+                            pass
+                        last_level_push[0] = now
+
+                    # Voice emotion — feed raw PCM once per VU update (every ~80ms, speech only)
                     try:
-                        samples = indata.astype(np.float32)
-                        rms = float(np.sqrt(np.mean(samples * samples)))
-                        level = min(1.0, rms / 3000.0)  # empirical scale for typical speech RMS
-                        self.ui.set_audio_level(level)
+                        self._emotion.feed(data)
                     except Exception:
                         pass
-                    last_level_push[0] = now_t
 
-                # Voice emotion — feed raw PCM once per VU update (every ~80ms)
-                try:
-                    self._emotion.feed(data)
-                except Exception:
-                    pass
+            if now - diag_state["last_log"] > 2.0:
+                print(f"[DIAG] mic gate: speaking={jarvis_speaking} muted={self.ui.muted} state={state.name} "
+                      f"allowed={allowed} sent={diag_state['sent_count']} blocked={diag_state['blocked_count']} "
+                      f"noise_dropped={diag_state['noise_dropped_count']}")
+                diag_state["last_log"] = now
 
         try:
             with sd.InputStream(

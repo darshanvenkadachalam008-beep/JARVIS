@@ -358,6 +358,8 @@ from main import (
     _get_api_key,
     _get_wake_sensitivity,
     _save_wake_sensitivity,
+    _get_noise_floor_rms,
+    _save_noise_floor_rms,
     _get_gesture_control_enabled,
     _save_gesture_control_enabled,
     _load_system_prompt,
@@ -378,6 +380,7 @@ from main import (
     BriefingScheduler,
 )
 from google.genai import types
+from core.vad_filter import MicEnergyFilter, DEFAULT_NOISE_FLOOR_RMS
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -580,6 +583,7 @@ class JarvisSession:
         # directly here removes the broken indirection.
         self._mobile = mobile
         self.ui.on_wake_sensitivity_changed = self._on_wake_sensitivity_changed
+        self._mic_filter = MicEnergyFilter(threshold_rms=_get_noise_floor_rms())
         # SAFETY NET: timestamp of the most recent set_speaking(True). Used
         # by _speaking_watchdog() as a second, independent line of defense
         # against the mic getting permanently wedged shut — see the
@@ -1038,7 +1042,12 @@ class JarvisSession:
 
     async def _listen_audio(self):
         loop = asyncio.get_event_loop()
-        diag_state = {"last_log": 0.0, "sent_count": 0, "blocked_count": 0}
+        diag_state = {
+            "last_log": 0.0,
+            "sent_count": 0,
+            "blocked_count": 0,
+            "noise_dropped_count": 0,
+        }
         last_level_push = [0.0]
         def cb(indata, frames, time_info, status):
             with self._speaking_lock:
@@ -1050,46 +1059,47 @@ class JarvisSession:
             # flight (web_search, daily_briefing, etc. can run 10-40s+ via
             # run_in_executor) — otherwise anything said mid-tool-call
             # lands on Gemini as a confused new turn with no tool result
-            # yet, and can trigger a duplicate/overlapping tool call. This
-            # was missing here, so the service was more exposed to that
-            # exact bug than the manually-run version.
+            # yet, and can trigger a duplicate/overlapping tool call.
             allowed = not speaking and not muted and not if_sleeping and not self._tool_in_flight
             now = time.time()
-            if allowed:
-                diag_state["sent_count"] += 1
-            else:
-                diag_state["blocked_count"] += 1
-            if now - diag_state["last_log"] > 2.0:
-                print(f"[DIAG] mic gate: speaking={speaking} muted={muted} state={state_label!r} "
-                      f"allowed={allowed} sent={diag_state['sent_count']} blocked={diag_state['blocked_count']}")
-                diag_state["last_log"] = now
-            if allowed:
-                raw = indata.tobytes()
-                self._last_activity = time.time()
-                def _add():
-                    try: self.out_queue.put_nowait({"data": raw, "mime_type": "audio/pcm"})
-                    except asyncio.QueueFull: pass
-                loop.call_soon_threadsafe(_add)
 
-                # PARITY FIX: voice-reactive hologram pulse — RMS of this
-                # chunk pushed to the UI a few times a second. Ported
-                # verbatim from main.py's _listen_audio.
-                if now - last_level_push[0] > 0.08:
+            if not allowed:
+                diag_state["blocked_count"] += 1
+                self._mic_filter.reset()
+            else:
+                # Phase 1: Energy-based VAD pre-filter with hangover
+                pass_filter, rms = self._mic_filter.process_chunk(indata, now=now)
+                if not pass_filter:
+                    diag_state["noise_dropped_count"] += 1
+                else:
+                    diag_state["sent_count"] += 1
+                    raw = indata.tobytes()
+                    self._last_activity = now
+                    def _add():
+                        try: self.out_queue.put_nowait({"data": raw, "mime_type": "audio/pcm"})
+                        except asyncio.QueueFull: pass
+                    loop.call_soon_threadsafe(_add)
+
+                    # Voice-reactive hologram pulse (gated strictly on genuine speech passing filter)
+                    if now - last_level_push[0] > 0.08:
+                        try:
+                            level = min(1.0, rms / 3000.0)
+                            self.ui.set_audio_level(level)
+                        except Exception:
+                            pass
+                        last_level_push[0] = now
+
+                    # Voice emotion — feed raw PCM once per VU update (~80ms, speech only)
                     try:
-                        samples = indata.astype(np.float32)
-                        rms = float(np.sqrt(np.mean(samples * samples)))
-                        level = min(1.0, rms / 3000.0)
-                        self.ui.set_audio_level(level)
+                        self._emotion.feed(raw)
                     except Exception:
                         pass
-                    last_level_push[0] = now
 
-                # PARITY FIX: voice emotion — feed raw PCM once per VU
-                # update (~80ms), same as main.py.
-                try:
-                    self._emotion.feed(raw)
-                except Exception:
-                    pass
+            if now - diag_state["last_log"] > 2.0:
+                print(f"[DIAG] mic gate: speaking={speaking} muted={muted} state={state_label!r} "
+                      f"allowed={allowed} sent={diag_state['sent_count']} blocked={diag_state['blocked_count']} "
+                      f"noise_dropped={diag_state['noise_dropped_count']}")
+                diag_state["last_log"] = now
         with sd.InputStream(samplerate=SEND_SAMPLE_RATE, channels=CHANNELS, dtype="int16", blocksize=CHUNK_SIZE, callback=cb):
             while True:
                 await asyncio.sleep(0.1)

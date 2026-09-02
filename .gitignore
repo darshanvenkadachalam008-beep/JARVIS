@@ -4,6 +4,8 @@ config/firebase-service-account.json
 config/vault.enc
 memory/access_control.json
 memory/audit_log.jsonl
+memory/integrity_manifest.json
+memory/integrity_pubkey.pem
 .env
 *.key
 *.pem

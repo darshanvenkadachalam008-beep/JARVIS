@@ -105,7 +105,7 @@ def _load_sentinel_secret() -> str:
                 return secret
     except Exception as e:
         log.warning(f"Could not read sentinel_shared_secret: {e}")
-    print("[Sentinel] ⚠️ sentinel_shared_secret not set in api_keys.json — "
+    print("[Sentinel] [!] sentinel_shared_secret not set in api_keys.json — "
           "/fraud-alert webhook is disabled until it's configured.")
     return ""
 
