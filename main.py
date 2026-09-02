@@ -1486,6 +1486,7 @@ class JarvisLive:
         self._loop          = None
         self._is_speaking   = False
         self._speaking_lock = threading.Lock()
+        self._speaking_since = None
         self._last_activity = time.time()
 
         # ── Phase 4: Shutdown event — set on shutdown, checked by run() loop ──
@@ -1918,17 +1919,11 @@ class JarvisLive:
     def set_speaking(self, value: bool):
         with self._speaking_lock:
             self._is_speaking = value
+            self._speaking_since = time.time() if value else None
         # FLICKER FIX: the UI label comes from two independent sources —
         # this method calling ui.set_state() directly, AND the StateManager's
         # on_change callback (_on_state_change) firing from
-        # begin_conversation()/end_conversation() below. Previously the
-        # state-manager call happened FIRST, so its "ACTIVE" label painted
-        # the HUD, and only microseconds later did the real "SPEAKING" /
-        # "LISTENING" label overwrite it — a visible flash on every single
-        # reply. Setting the real label FIRST means the state-manager's
-        # "ACTIVE" callback (still needed internally to block proactive
-        # interruptions — see can_be_interrupted()) never gets a chance to
-        # paint over it.
+        # begin_conversation()/end_conversation() below.
         if value:
             if not self.ui.muted:
                 self.ui.set_state("SPEAKING")
@@ -1936,18 +1931,27 @@ class JarvisLive:
             self._state_manager.begin_conversation()   # LISTENING -> ACTIVE_CONVERSATION (internal bookkeeping only)
             self._thinking_since = None   # Gemini responded — no longer stuck
         else:
-            # BUGFIX: the HUD's "speaking" flag (and SPEAKING label) was only ever
-            # set, never cleared, because nothing pushed a UI state change here.
-            # Without this, self.hud.speaking stays True forever after the first
-            # reply, permanently overriding every later label (THINKING/LISTENING/
-            # SLEEPING all lose to "if self.speaking" in ui.py's paint code).
             if not self.ui.muted:
                 self.ui.set_state("LISTENING")
             self._wake_detector.resume()
-            # After speaking ends return to LISTENING so the user can give a command.
-            # _receive_audio.turn_complete will move to SLEEPING once the user's
-            # actual command turn is fully answered.
             self._state_manager.end_conversation()     # ACTIVE_CONVERSATION -> LISTENING (internal bookkeeping only)
+
+    def _interrupt_playback(self):
+        """Phase 2: Immediately stops playback, drains incoming audio queue, and opens mic for barge-in."""
+        with self._speaking_lock:
+            self._is_speaking = False
+            self._speaking_since = None
+        self._wake_detector.resume()
+        if self.audio_in_queue:
+            while not self.audio_in_queue.empty():
+                try:
+                    self.audio_in_queue.get_nowait()
+                except Exception:
+                    break
+        if not self.ui.muted:
+            self.ui.set_state("LISTENING")
+        self._state_manager.begin_conversation()
+        print("[BARGE-IN] 🛑 Interrupted JARVIS playback; drained audio queue and returned to LISTENING.")
 
     def speak(self, text: str):
         if not self._loop or not self.session:
@@ -2691,9 +2695,11 @@ class JarvisLive:
         }
         last_level_push = [0.0]
 
+        BARGE_IN_DEBOUNCE_SECS = 0.4  # 400ms debounce
         def callback(indata, frames, time_info, status):
             with self._speaking_lock:
                 jarvis_speaking = self._is_speaking
+                speaking_since = self._speaking_since
             # Phase 4: only stream audio when LISTENING or ACTIVE_CONVERSATION.
             # SLEEPING and SHUTDOWN states do not send mic audio to Gemini.
             state = self._state_manager.state
@@ -2703,6 +2709,33 @@ class JarvisLive:
                 audio_allowed = False
 
             now = time.time()
+
+            # ── Phase 2: Barge-in detection during playback ────────────────────────
+            # NOTE: Acoustic Echo Cancellation (AEC) limitation:
+            # Without hardware or OS-level AEC, acoustic playback from speakers into
+            # the microphone can potentially cause false barge-in if speaker volume
+            # is very loud. A 400ms debounce ensures initial playback transients do
+            # not falsely interrupt, and the calibrated noise floor (280 RMS) requires
+            # genuine voice energy to trigger.
+            if jarvis_speaking and not self.ui.muted and audio_allowed:
+                if speaking_since and (now - speaking_since >= BARGE_IN_DEBOUNCE_SECS):
+                    pass_filter, rms = self._mic_filter.process_chunk(indata, now=now)
+                    if pass_filter and rms >= self._mic_filter.threshold_rms:
+                        # Genuine speech onset detected while speaking -> BARGE IN
+                        loop.call_soon_threadsafe(self._interrupt_playback)
+                        data = indata.tobytes()
+                        self._touch_activity()
+                        def add_barge_audio():
+                            try:
+                                self.out_queue.put_nowait({"data": data, "mime_type": "audio/pcm"})
+                            except asyncio.QueueFull:
+                                pass
+                        loop.call_soon_threadsafe(add_barge_audio)
+                        diag_state["sent_count"] += 1
+                        return
+                diag_state["blocked_count"] += 1
+                return
+
             allowed = not jarvis_speaking and not self.ui.muted and audio_allowed
 
             if not allowed:

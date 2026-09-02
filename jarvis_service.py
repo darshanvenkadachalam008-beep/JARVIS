@@ -798,6 +798,23 @@ class JarvisSession:
             if not self.ui.muted:
                 self.ui.set_state("LISTENING")
 
+    def _interrupt_playback(self):
+        """Phase 2: Immediately stops playback, drains incoming audio queue, and opens mic for barge-in."""
+        with self._speaking_lock:
+            self._is_speaking = False
+            self._speaking_since = None
+        if self._wake_listener:
+            self._wake_listener.resume()
+        if self.audio_in_queue:
+            while not self.audio_in_queue.empty():
+                try:
+                    self.audio_in_queue.get_nowait()
+                except Exception:
+                    break
+        if not self.ui.muted:
+            self.ui.set_state("LISTENING")
+        print("[BARGE-IN] 🛑 Interrupted JARVIS playback; drained audio queue and returned to LISTENING.")
+
     def _on_wake_sensitivity_changed(self, value: float):
         if self._wake_listener:
             self._wake_listener.set_threshold(value)
@@ -1049,19 +1066,41 @@ class JarvisSession:
             "noise_dropped_count": 0,
         }
         last_level_push = [0.0]
+        BARGE_IN_DEBOUNCE_SECS = 0.4  # 400ms debounce
         def cb(indata, frames, time_info, status):
             with self._speaking_lock:
                 speaking = self._is_speaking
+                speaking_since = self._speaking_since
             state_label = self.ui._win._current_state if hasattr(self.ui, '_win') else "LISTENING"
             if_sleeping = (state_label == "SLEEPING")
             muted = self.ui.muted
-            # PARITY FIX: main.py blocks mic audio while a tool is in
-            # flight (web_search, daily_briefing, etc. can run 10-40s+ via
-            # run_in_executor) — otherwise anything said mid-tool-call
-            # lands on Gemini as a confused new turn with no tool result
-            # yet, and can trigger a duplicate/overlapping tool call.
-            allowed = not speaking and not muted and not if_sleeping and not self._tool_in_flight
             now = time.time()
+
+            # ── Phase 2: Barge-in detection during playback ────────────────────────
+            # NOTE: Acoustic Echo Cancellation (AEC) limitation:
+            # Without hardware or OS-level AEC, acoustic playback from speakers into
+            # the microphone can potentially cause false barge-in if speaker volume
+            # is very loud. A 400ms debounce ensures initial playback transients do
+            # not falsely interrupt, and the calibrated noise floor (280 RMS) requires
+            # genuine voice energy to trigger.
+            if speaking and not muted and not if_sleeping and not self._tool_in_flight:
+                if speaking_since and (now - speaking_since >= BARGE_IN_DEBOUNCE_SECS):
+                    pass_filter, rms = self._mic_filter.process_chunk(indata, now=now)
+                    if pass_filter and rms >= self._mic_filter.threshold_rms:
+                        # Genuine speech onset detected while speaking -> BARGE IN
+                        loop.call_soon_threadsafe(self._interrupt_playback)
+                        raw = indata.tobytes()
+                        self._last_activity = now
+                        def _add_barge():
+                            try: self.out_queue.put_nowait({"data": raw, "mime_type": "audio/pcm"})
+                            except asyncio.QueueFull: pass
+                        loop.call_soon_threadsafe(_add_barge)
+                        diag_state["sent_count"] += 1
+                        return
+                diag_state["blocked_count"] += 1
+                return
+
+            allowed = not speaking and not muted and not if_sleeping and not self._tool_in_flight
 
             if not allowed:
                 diag_state["blocked_count"] += 1
