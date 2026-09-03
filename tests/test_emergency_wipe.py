@@ -146,6 +146,22 @@ def test_emergency_wipe_controller_failure_handling(wipe_env):
     assert any(entry["event_type"] == "wipe_failed" for entry in recent)
 
 
+def test_emergency_wipe_importerror_records_alert_history(wipe_env):
+    """
+    Tests that if send2trash is missing (ImportError), execute_wipe:
+    1. Returns False and descriptive error message.
+    2. Records AlertHistory 'wipe_failed' entry.
+    """
+    controller = wipe_env["controller"]
+    with patch.dict(sys.modules, {"send2trash": None}):
+        success, results = controller.execute_wipe(channel="test_channel")
+
+    assert success is False
+    assert any("send2trash not installed" in r for r in results)
+    recent = AlertHistory.recent(10)
+    assert any(entry["event_type"] == "wipe_failed" and "send2trash not installed" in entry.get("title", "") for entry in recent)
+
+
 def test_emergency_wipe_nonexistent_paths_are_skipped_cleanly(tmp_path, wipe_env):
     """Tests that non-existent paths are marked as skipped (⏭) without counting as failures."""
     non_existent = str(tmp_path / "does_not_exist.txt")

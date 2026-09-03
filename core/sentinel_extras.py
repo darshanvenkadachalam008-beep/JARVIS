@@ -744,6 +744,7 @@ class EmergencyWipeController:
         try:
             from send2trash import send2trash
         except ImportError:
+            AlertHistory.record("wipe_failed", f"Emergency wipe error: send2trash not installed", "send2trash missing", extra={"channel": channel})
             return False, ["❌ send2trash not installed — cannot wipe safely. Aborted."]
 
         results = []
