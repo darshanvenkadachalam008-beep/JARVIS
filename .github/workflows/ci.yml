@@ -29,13 +29,26 @@ jobs:
 
       - name: Run Full Security Test Suite
         id: run_tests
+        shell: cmd
         run: |
-          python -m pytest tests/ -v --tb=short --junitxml=pytest-results.xml
+          python -m pytest tests/ -v --tb=short --junitxml=pytest-results.xml > pytest_stdout.log 2>&1
+          type pytest_stdout.log
+          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
       - name: Generate Security Status Dashboard
         if: always()
         run: |
           python -m core.security_status
+
+      - name: Upload Pytest Log and Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-execution-logs
+          path: |
+            pytest_stdout.log
+            pytest-results.xml
+          if-no-files-found: ignore
 
       - name: Upload Security Dashboard Report
         if: always()
