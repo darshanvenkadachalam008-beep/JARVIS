@@ -619,7 +619,15 @@ class JarvisSession:
             interrupt_sink=self._interrupt_playback,
         )
 
+        # Wire EmergencyWipeController singleton to ProactiveBridge for CRITICAL blocked wipe alerts
+        try:
+            from core.sentinel_extras import EmergencyWipeController
+            EmergencyWipeController.get_instance().set_bridge(self._proactive_bridge)
+        except Exception as _we:
+            print(f"[WipeController] Bridge wiring skipped: {_we}")
+
         self._memory_editor = None
+
         self.ui.on_open_memory_editor = self._open_memory_editor_ui
         self._proactive = ProactiveIntelligence(
             get_state  = self._proactive_state_adapter,
@@ -1523,7 +1531,15 @@ class JarvisTrayApp:
         if self._mobile:
             self._proactive_bridge.set_mobile_sink(lambda msg, jpeg: self._on_intruder_alert(msg, jpeg))
 
+        # Wire EmergencyWipeController singleton to ProactiveBridge for CRITICAL blocked wipe alerts
+        try:
+            from core.sentinel_extras import EmergencyWipeController
+            EmergencyWipeController.get_instance().set_bridge(self._proactive_bridge)
+        except Exception as _we:
+            print(f"[WipeController] Bridge wiring skipped: {_we}")
+
         # ── Phase 7: Failed-login mobile alert ──────────────────────────────────
+
         # Watches Windows' own Security Event Log for failed logon attempts
         # (event 4625 — recorded natively by Windows for every wrong password
         # at the lock screen). On a hit: push a notification to the phone and

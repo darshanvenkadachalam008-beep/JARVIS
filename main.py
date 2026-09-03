@@ -1585,11 +1585,19 @@ class JarvisLive:
             interrupt_sink=self._interrupt_playback,
         )
 
+        # Wire EmergencyWipeController singleton to ProactiveBridge for CRITICAL blocked wipe alerts
+        try:
+            from core.sentinel_extras import EmergencyWipeController
+            EmergencyWipeController.get_instance().set_bridge(self._proactive_bridge)
+        except Exception as _we:
+            print(f"[WipeController] Bridge wiring skipped: {_we}")
+
         # Phase 1 & 4: proactive briefing scheduler wired to ProactiveBridge
         self._briefing_scheduler = BriefingScheduler(
             on_briefing=self._on_scheduled_briefing,
             bridge=self._proactive_bridge,
         )
+
 
         # ── Phase 4: Proactive Intelligence ──────────────────────────────────
         # Voice emotion detector — analyses mic PCM in real-time
