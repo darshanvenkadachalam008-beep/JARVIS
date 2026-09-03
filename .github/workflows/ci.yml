@@ -38,6 +38,14 @@ jobs:
         run: |
           python -m core.security_status
 
+      - name: Upload Pytest Test Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-test-log
+          path: pytest_output.log
+          if-no-files-found: ignore
+
       - name: Upload Security Dashboard Report
         if: always()
         uses: actions/upload-artifact@v4
