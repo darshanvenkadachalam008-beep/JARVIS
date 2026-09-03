@@ -31,9 +31,8 @@ jobs:
         id: dependency_scan
         shell: cmd
         run: |
-          python -m pip_audit -r requirements.txt --desc > pip_audit_stdout.log 2>&1
-          type pip_audit_stdout.log
-          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+          python -m pip_audit -r requirements.txt --desc
+
 
       - name: Run Full Security Test Suite
         id: run_tests
@@ -56,8 +55,8 @@ jobs:
           path: |
             pytest_stdout.log
             pytest-results.xml
-            pip_audit_stdout.log
           if-no-files-found: ignore
+
 
 
       - name: Upload Security Dashboard Report
