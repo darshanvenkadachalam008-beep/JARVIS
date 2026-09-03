@@ -1605,7 +1605,10 @@ class JarvisTrayApp:
         self._ui.on_gesture_toggle = self._on_gesture_toggle_ui
         self._session = JarvisSession(self._ui, wake_listener=self._listener, mobile=self._mobile)
 
-        self._briefing = BriefingScheduler(on_briefing=self._trigger_briefing)
+        self._briefing = BriefingScheduler(
+            on_briefing=self._trigger_briefing,
+            bridge=getattr(self._session, "_proactive_bridge", None),
+        )
         self._briefing.start()
 
         self._sess_thread = SessionThread(self._session)

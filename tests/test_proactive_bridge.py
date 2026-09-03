@@ -267,3 +267,71 @@ def test_calendar_reminder_dispatches_high_priority_event_to_bridge():
     assert "Architecture Review" in dispatched_events[0]
     assert "Boardroom A" in dispatched_events[0]
     assert len(spoken_fallback) == 0  # Fallback was not needed since bridge succeeded
+
+
+# ── 5. BriefingScheduler Natural Event Window & Bridge Integration Tests ──────
+
+def test_briefing_scheduler_dispatches_normal_priority_event_to_bridge():
+    dispatched_events = []
+    spoken_fallback = []
+    state = ["SPEAKING"]
+
+    bridge = ProactiveBridge(
+        get_state=lambda: state[0],
+        voice_sink=lambda msg: dispatched_events.append(msg),
+    )
+
+    from main import BriefingScheduler
+
+    now = datetime.now()
+    fake_slot = [{"hour": now.hour, "minute": now.minute, "label": "morning"}]
+    mock_state = {}
+
+    with patch.object(BriefingScheduler, "_get_times", return_value=fake_slot), \
+         patch("main._load_briefing_state", return_value=mock_state), \
+         patch("main._save_briefing_state", side_effect=lambda s: mock_state.update(s)):
+
+        scheduler = BriefingScheduler(
+            on_briefing=lambda label: spoken_fallback.append(label),
+            bridge=bridge,
+        )
+
+        # 1. Trigger check while speaking -> queued, not spoken
+        scheduler._check()
+        assert len(dispatched_events) == 0
+        assert len(spoken_fallback) == 0
+
+        # 2. State transition to LISTENING -> drains queue and speaks
+        state[0] = "LISTENING"
+        bridge.on_state_change("LISTENING")
+        assert len(dispatched_events) == 1
+        assert "morning briefing" in dispatched_events[0]
+
+
+def test_briefing_scheduler_dedup_daily_state():
+    dispatched_events = []
+    bridge = ProactiveBridge(
+        get_state=lambda: "LISTENING",
+        voice_sink=lambda msg: dispatched_events.append(msg),
+    )
+
+    from main import BriefingScheduler
+
+    now = datetime.now()
+    fake_slot = [{"hour": now.hour, "minute": now.minute, "label": "evening"}]
+    mock_state = {}
+
+    with patch.object(BriefingScheduler, "_get_times", return_value=fake_slot), \
+         patch("main._load_briefing_state", return_value=mock_state), \
+         patch("main._save_briefing_state", side_effect=lambda s: mock_state.update(s)):
+
+        scheduler = BriefingScheduler(bridge=bridge)
+
+        # First check fires
+        scheduler._check()
+        assert len(dispatched_events) == 1
+
+        # Second check skips (already fired today)
+        scheduler._check()
+        assert len(dispatched_events) == 1
+

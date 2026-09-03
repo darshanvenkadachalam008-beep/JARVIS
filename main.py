@@ -267,6 +267,7 @@ class BriefingScheduler:
     Fires proactive briefings at configured times.
     Default: morning (08:00) and evening (20:00) — mirrors the video demo.
     Times are stored in bi_data.json so the user can adjust via JARVIS voice.
+    Wired into ProactiveBridge with NORMAL priority and fallback to on_briefing callback.
     """
 
     DEFAULT_TIMES = [
@@ -274,16 +275,17 @@ class BriefingScheduler:
         {"hour": 20, "minute": 0,  "label": "evening"},
     ]
 
-    def __init__(self, on_briefing: callable):
+    def __init__(self, on_briefing=None, bridge=None):
         self._on_briefing = on_briefing
+        self._bridge      = bridge
         self._thread      = None
         self._running     = False
 
     def start(self):
         self._running = True
-        self._thread  = threading.Thread(target=self._run, daemon=True)
+        self._thread  = threading.Thread(target=self._run, daemon=True, name="BriefingScheduler")
         self._thread.start()
-        print("[Briefing] ⏰ Scheduler started")
+        print("[Briefing] [Scheduler] Thread started")
 
     def stop(self):
         self._running = False
@@ -294,25 +296,55 @@ class BriefingScheduler:
 
     def _run(self):
         while self._running:
-            now    = datetime.now()
-            state  = _load_briefing_state()
-            today  = now.strftime("%Y-%m-%d")
+            try:
+                self._check()
+            except Exception as e:
+                print(f"[Briefing] [!] Check error: {e}")
+            for _ in range(30):
+                if not self._running:
+                    break
+                time.sleep(1)
 
-            for slot in self._get_times():
-                key = f"{today}_{slot['label']}"
-                if state.get(key):
-                    continue  # already fired today
-                target = now.replace(
-                    hour=slot["hour"], minute=slot["minute"],
-                    second=0, microsecond=0
+    def _check(self):
+        now    = datetime.now()
+        state  = _load_briefing_state()
+        today  = now.strftime("%Y-%m-%d")
+
+        for slot in self._get_times():
+            key = f"{today}_{slot['label']}"
+            if state.get(key):
+                continue  # already fired today
+            target = now.replace(
+                hour=slot["hour"], minute=slot["minute"],
+                second=0, microsecond=0
+            )
+            if abs((now - target).total_seconds()) < 90:  # within 90s window
+                state[key] = True
+                _save_briefing_state(state)
+                print(f"[Briefing] [!] Firing {slot['label']} briefing")
+                brief_text = (
+                    f"[AUTO BRIEFING] It is now {slot['label']} briefing time. "
+                    f"Deliver the {slot['label']} briefing proactively using the daily_briefing tool."
                 )
-                if abs((now - target).total_seconds()) < 90:  # within 90s window
-                    state[key] = True
-                    _save_briefing_state(state)
-                    print(f"[Briefing] 🔔 Firing {slot['label']} briefing")
+                if self._bridge:
+                    try:
+                        from core.proactive_bridge import ProactiveEvent, ProactivePriority
+                        self._bridge.dispatch(ProactiveEvent(
+                            category="briefing",
+                            title=f"{slot['label'].title()} Briefing",
+                            message=brief_text,
+                            priority=ProactivePriority.NORMAL,
+                            ttl_seconds=1800.0,
+                            dedup_key=f"briefing:{key}",
+                            data={"label": slot["label"], "time": now.strftime("%H:%M")},
+                            channels={"voice", "ui", "mobile"},
+                        ))
+                    except Exception as e:
+                        print(f"[Briefing] [!] Bridge dispatch error: {e}")
+                        if self._on_briefing:
+                            self._on_briefing(slot["label"])
+                elif self._on_briefing:
                     self._on_briefing(slot["label"])
-
-            time.sleep(300)   # poll every 5 minutes — avoids interrupting responses  # check every minute
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1544,8 +1576,20 @@ class JarvisLive:
         # Phase 1: Energy-based mic pre-filter (drops ambient noise before Gemini queue)
         self._mic_filter = MicEnergyFilter(threshold_rms=_get_noise_floor_rms())
 
-        # Phase 1: proactive briefing scheduler
-        self._briefing_scheduler = BriefingScheduler(on_briefing=self._on_scheduled_briefing)
+        # ── Phase 4: Proactive Bridge (Unified Proactive Push) ────────────────
+        from core.proactive_bridge import ProactiveBridge
+        self._proactive_bridge = ProactiveBridge(
+            get_state=lambda: self._state_manager.state.name if hasattr(self, "_state_manager") else "LISTENING",
+            voice_sink=self.speak,
+            ui_sink=self.ui.write_log if self.ui else None,
+            interrupt_sink=self._interrupt_playback,
+        )
+
+        # Phase 1 & 4: proactive briefing scheduler wired to ProactiveBridge
+        self._briefing_scheduler = BriefingScheduler(
+            on_briefing=self._on_scheduled_briefing,
+            bridge=self._proactive_bridge,
+        )
 
         # ── Phase 4: Proactive Intelligence ──────────────────────────────────
         # Voice emotion detector — analyses mic PCM in real-time
@@ -1571,15 +1615,6 @@ class JarvisLive:
                 except Exception:
                     pass
         self._emotion = VoiceEmotionDetector(on_state_change=_on_mood)
-
-        # ── Phase 4: Proactive Bridge (Unified Proactive Push) ────────────────
-        from core.proactive_bridge import ProactiveBridge
-        self._proactive_bridge = ProactiveBridge(
-            get_state=lambda: self._state_manager.state.name if hasattr(self, "_state_manager") else "LISTENING",
-            voice_sink=self.speak,
-            ui_sink=self.ui.write_log if self.ui else None,
-            interrupt_sink=self._interrupt_playback,
-        )
 
         self._proactive = ProactiveIntelligence(
             get_state  = lambda: self._state_manager.state,
