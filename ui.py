@@ -1209,12 +1209,10 @@ class SetupOverlay(QWidget):
 
 # ── Settings overlay ──────────────────────────────────────────────────────────
 class SettingsOverlay(QWidget):
-    changed          = pyqtSignal(float)
-    patience_changed = pyqtSignal(float)
-    closed           = pyqtSignal()
+    changed = pyqtSignal(float)
+    closed  = pyqtSignal()
 
-    def __init__(self, initial_sensitivity: float,
-                 initial_patience: float = 0.7, parent=None):
+    def __init__(self, initial_sensitivity: float, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
@@ -1287,42 +1285,6 @@ class SettingsOverlay(QWidget):
         row.addWidget(_lbl("Strict", 7, color=C.RED))
         lay.addLayout(row)
 
-        lay.addSpacing(10)
-        sep2 = QFrame(); sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setStyleSheet(f"color: {C.BORDER};"); lay.addWidget(sep2)
-        lay.addSpacing(4)
-
-        lay.addWidget(_lbl("VAD PATIENCE (END-OF-TURN)", 7, color=C.TEXT_DIM,
-                           align=Qt.AlignmentFlag.AlignLeft))
-        lay.addWidget(_lbl(
-            "How long JARVIS waits after a pause before cutting you off.",
-            7, color=C.TEXT_MED, align=Qt.AlignmentFlag.AlignLeft))
-        lay.addSpacing(2)
-        self._pat_lbl = _lbl(f"{initial_patience:.2f}", 11, True, C.GOLD)
-        lay.addWidget(self._pat_lbl)
-
-        prow = QHBoxLayout(); prow.setSpacing(8)
-        prow.addWidget(_lbl("Short", 7, color=C.RED))
-        self._pat_slider = QSlider(Qt.Orientation.Horizontal)
-        self._pat_slider.setRange(10, 90)
-        self._pat_slider.setValue(int(round(initial_patience * 100)))
-        self._pat_slider.setStyleSheet(f"""
-            QSlider::groove:horizontal {{
-                height: 3px; background: {C.BORDER}; border-radius: 1px;
-            }}
-            QSlider::handle:horizontal {{
-                background: {C.STEEL}; width: 14px; height: 14px;
-                margin: -6px 0; border-radius: 7px;
-            }}
-            QSlider::sub-page:horizontal {{
-                background: {C.STEEL_DIM}; border-radius: 1px;
-            }}
-        """)
-        self._pat_slider.valueChanged.connect(self._on_pat)
-        prow.addWidget(self._pat_slider, stretch=1)
-        prow.addWidget(_lbl("Patient", 7, color=C.GREEN))
-        lay.addLayout(prow)
-
         lay.addSpacing(8)
         done = QPushButton("DONE")
         done.setFont(QFont("Arial", 9, QFont.Weight.Bold))
@@ -1344,11 +1306,6 @@ class SettingsOverlay(QWidget):
         val = v / 100.0
         self._val_lbl.setText(f"{val:.2f}")
         self.changed.emit(val)
-
-    def _on_pat(self, v: int):
-        val = v / 100.0
-        self._pat_lbl.setText(f"{val:.2f}")
-        self.patience_changed.emit(val)
 
     def _close(self):
         self.hide()
@@ -1546,7 +1503,6 @@ class MainWindow(QMainWindow):
         self.on_gesture_toggle           = None
         self.on_file_selected            = None
         self.on_wake_sensitivity_changed = None
-        self.on_vad_patience_changed     = None
         self.on_open_memory_editor       = None
 
         self._muted           = False
@@ -2219,47 +2175,13 @@ class MainWindow(QMainWindow):
         if self.on_wake_sensitivity_changed:
             self.on_wake_sensitivity_changed(self._wake_sensitivity)
 
-    def _load_vad_patience(self) -> float:
-        try:
-            d = json.loads(API_FILE.read_text(encoding="utf-8"))
-            return float(d.get("vad_patience", 0.5))
-        except Exception:
-            return 0.5
-
-    def _save_vad_patience(self, value: float):
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        data = {}
-        if API_FILE.exists():
-            try:
-                data = json.loads(API_FILE.read_text(encoding="utf-8"))
-            except Exception:
-                data = {}
-        data["vad_patience"] = value
-        API_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
-
-    def _on_vad_patience_slider(self, value: float):
-        self._pending_patience = value
-        if not hasattr(self, "_patience_debounce"):
-            self._patience_debounce = QTimer()
-            self._patience_debounce.setSingleShot(True)
-            self._patience_debounce.timeout.connect(self._commit_vad_patience)
-        self._patience_debounce.start(400)
-
-    def _commit_vad_patience(self):
-        value = getattr(self, "_pending_patience", 0.5)
-        self._save_vad_patience(value)
-        if self.on_vad_patience_changed:
-            self.on_vad_patience_changed(value)
-
     def _show_settings(self):
-        pat = self._load_vad_patience()
-        ov  = SettingsOverlay(self._wake_sensitivity, pat, self.centralWidget())
-        cw  = self.centralWidget()
-        ow, oh = 420, 320
+        ov = SettingsOverlay(self._wake_sensitivity, self.centralWidget())
+        cw = self.centralWidget()
+        ow, oh = 420, 240
         ov.setGeometry(
             (cw.width() - ow) // 2, (cw.height() - oh) // 2, ow, oh)
         ov.changed.connect(self._on_wake_sensitivity_slider)
-        ov.patience_changed.connect(self._on_vad_patience_slider)
         ov.closed.connect(self._on_settings_closed)
         ov.show(); ov.raise_()
         self._settings_overlay = ov
@@ -2378,14 +2300,6 @@ class JarvisUI:
     @on_wake_sensitivity_changed.setter
     def on_wake_sensitivity_changed(self, cb):
         self._win.on_wake_sensitivity_changed = cb
-
-    @property
-    def on_vad_patience_changed(self):
-        return self._win.on_vad_patience_changed
-
-    @on_vad_patience_changed.setter
-    def on_vad_patience_changed(self, cb):
-        self._win.on_vad_patience_changed = cb
 
     @property
     def on_open_memory_editor(self):

@@ -136,9 +136,6 @@ def _save_wake_sensitivity(value: float) -> None:
         json.dump(data, f, indent=2)
 
 
-DEFAULT_VAD_PATIENCE = 0.7   # LOW sensitivity = patient; user can tune down in Settings
-
-
 def _get_gesture_control_enabled() -> bool:
     """Webcam gesture control is opt-in (off by default) since it requires
     camera access — read the saved toggle from config/api_keys.json,
@@ -159,30 +156,6 @@ def _save_gesture_control_enabled(value: bool) -> None:
     except Exception:
         pass
     data["gesture_control_enabled"] = bool(value)
-    API_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(API_CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-
-
-def _get_vad_patience() -> float:
-    """Load saved VAD patience from config/api_keys.json."""
-    try:
-        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return float(data.get("vad_patience", DEFAULT_VAD_PATIENCE))
-    except Exception:
-        return DEFAULT_VAD_PATIENCE
-
-
-def _save_vad_patience(value: float) -> None:
-    value = max(0.0, min(1.0, float(value)))
-    data: dict = {}
-    try:
-        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        pass
-    data["vad_patience"] = value
     API_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(API_CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
@@ -1564,10 +1537,6 @@ class JarvisLive:
         # Let the settings UI (sensitivity slider) push live threshold updates
         self.ui.on_wake_sensitivity_changed = self._on_wake_sensitivity_changed
 
-        # Phase 3: VAD patience slider → reconnect with new patience on change
-        self._vad_patience = _get_vad_patience()
-        self.ui.on_vad_patience_changed = self._on_vad_patience_changed
-
         # Phase 3: Memory editor button
         self._memory_editor = None
         self.ui.on_open_memory_editor = self._open_memory_editor_ui
@@ -1740,27 +1709,6 @@ class JarvisLive:
         Applies new threshold to the running listener and logs once."""
         self._wake_detector.set_threshold(value)
         self.ui.write_log(f"SYS: Wake sensitivity → {value:.2f}")
-
-    def _on_vad_patience_changed(self, value: float):
-        """Called once per debounce commit (400 ms after user stops moving slider).
-        Saves the new value; takes effect on the next session reconnect."""
-        self._vad_patience = value
-        _save_vad_patience(value)
-        self.ui.write_log(f"SYS: VAD patience set to {value:.2f} — reconnecting…")
-        # Force a session reconnect so the new patience is applied
-        if self.session and self._loop:
-            asyncio.run_coroutine_threadsafe(
-                self._force_reconnect(), self._loop
-            )
-
-    async def _force_reconnect(self):
-        """Gracefully drop the current session so the run-loop reconnects
-        with the updated VAD patience config."""
-        try:
-            if self.session:
-                await self.session.close()
-        except Exception:
-            pass
 
     def _open_memory_editor_ui(self):
         """Show the Memory Bank overlay (creates it lazily)."""
