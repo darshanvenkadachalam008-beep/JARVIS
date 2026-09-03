@@ -29,9 +29,8 @@ jobs:
 
       - name: Run Full Security Test Suite
         id: run_tests
-        shell: cmd
         run: |
-          python -m pytest tests/ -v --tb=short
+          python -m pytest tests/ -v --tb=short --junitxml=pytest-results.xml
 
       - name: Generate Security Status Dashboard
         if: always()
@@ -53,3 +52,29 @@ jobs:
           echo "* **Platform**: Windows Server (windows-latest)" >> $env:GITHUB_STEP_SUMMARY
           echo "* **Python Version**: 3.10" >> $env:GITHUB_STEP_SUMMARY
           echo "* **Gate Status**: ${{ steps.run_tests.outcome }}" >> $env:GITHUB_STEP_SUMMARY
+          if (Test-Path pytest-results.xml) {
+              [xml]$xml = Get-Content pytest-results.xml
+              $suite = $xml.'testsuites'.'testsuite'
+              if (-not $suite) { $suite = $xml.'testsuite' }
+              echo "* **Total Tests**: $($suite.tests)" >> $env:GITHUB_STEP_SUMMARY
+              echo "* **Failures**: $($suite.failures)" >> $env:GITHUB_STEP_SUMMARY
+              echo "* **Errors**: $($suite.errors)" >> $env:GITHUB_STEP_SUMMARY
+              echo "* **Time**: $($suite.time)s" >> $env:GITHUB_STEP_SUMMARY
+              if ([int]$suite.failures -gt 0 -or [int]$suite.errors -gt 0) {
+                  echo "### Failure Details" >> $env:GITHUB_STEP_SUMMARY
+                  foreach ($case in $suite.testcase) {
+                      if ($case.failure) {
+                          echo "#### ❌ $($case.name) ($($case.classname))" >> $env:GITHUB_STEP_SUMMARY
+                          echo '```' >> $env:GITHUB_STEP_SUMMARY
+                          echo $case.failure.'#text' >> $env:GITHUB_STEP_SUMMARY
+                          echo '```' >> $env:GITHUB_STEP_SUMMARY
+                      }
+                      if ($case.error) {
+                          echo "#### ⚠️ ERROR: $($case.name) ($($case.classname))" >> $env:GITHUB_STEP_SUMMARY
+                          echo '```' >> $env:GITHUB_STEP_SUMMARY
+                          echo $case.error.'#text' >> $env:GITHUB_STEP_SUMMARY
+                          echo '```' >> $env:GITHUB_STEP_SUMMARY
+                      }
+                  }
+              }
+          }
