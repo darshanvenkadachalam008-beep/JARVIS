@@ -610,6 +610,15 @@ class JarvisSession:
         # the speaking/tool-in-flight flags) onto the closest JarvisState
         # value so ProactiveIntelligence can reuse the same interruption
         # rules without requiring a full state-machine rewrite here.
+        # ── Phase 4: Proactive Bridge (Unified Proactive Push) ────────────────
+        from core.proactive_bridge import ProactiveBridge
+        self._proactive_bridge = ProactiveBridge(
+            get_state=lambda: "SPEAKING" if self._is_speaking else "LISTENING",
+            voice_sink=self.speak,
+            ui_sink=self.ui.write_log if self.ui else None,
+            interrupt_sink=self._interrupt_playback,
+        )
+
         self._memory_editor = None
         self.ui.on_open_memory_editor = self._open_memory_editor_ui
         self._proactive = ProactiveIntelligence(
@@ -797,6 +806,9 @@ class JarvisSession:
         else:
             if not self.ui.muted:
                 self.ui.set_state("LISTENING")
+
+        if hasattr(self, "_proactive_bridge") and self._proactive_bridge:
+            self._proactive_bridge.on_state_change("SPEAKING" if v else "LISTENING")
 
     def _interrupt_playback(self):
         """Phase 2: Immediately stops playback, drains incoming audio queue, and opens mic for barge-in."""
@@ -1319,7 +1331,8 @@ class JarvisSession:
         try:
             from core.calendar_intel import CalendarReminder
             self._calendar_reminder = CalendarReminder(
-                inject_fn=lambda msg: self.inject(msg)
+                inject_fn=lambda msg: self.inject(msg),
+                bridge=getattr(self, "_proactive_bridge", None),
             )
             self._calendar_reminder.start()
         except Exception as _ce:

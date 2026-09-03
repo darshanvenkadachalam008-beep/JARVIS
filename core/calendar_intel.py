@@ -166,29 +166,40 @@ def get_today_summary() -> str:
 class CalendarReminder:
     """
     Polls for events every 60 seconds.
-    Calls inject_fn(text) when a meeting is ~10 minutes away.
+    Dispatches a HIGH priority ProactiveEvent to ProactiveBridge (or calls inject_fn fallback)
+    when a meeting is ~10 minutes away.
     """
 
-    def __init__(self, inject_fn, remind_minutes: int = 10):
+    def __init__(self, inject_fn=None, remind_minutes: int = 10, bridge=None):
         self._inject      = inject_fn
         self._remind_min  = remind_minutes
+        self._bridge      = bridge
         self._reminded    = set()   # event titles + day we already reminded
+        self._running     = False
         self._thread: Optional[threading.Thread] = None
 
     def start(self):
+        self._running = True
         self._thread = threading.Thread(
             target=self._loop, daemon=True, name="CalendarReminder"
         )
         self._thread.start()
-        print("[Calendar] ⏰ Reminder thread started")
+        print("[Calendar] [Reminder] Thread started")
+
+    def stop(self):
+        self._running = False
 
     def _loop(self):
-        while True:
+        while self._running:
             try:
                 self._check()
             except Exception as e:
-                print(f"[Calendar] ⚠️ Reminder check error: {e}")
-            time.sleep(60)
+                print(f"[Calendar] [!] Reminder check error: {e}")
+            # Check for stop every second over the 60s sleep interval
+            for _ in range(60):
+                if not self._running:
+                    break
+                time.sleep(1)
 
     def _check(self):
         events = get_events(hours_ahead=1)
@@ -207,5 +218,24 @@ class CalendarReminder:
                 loc  = f" at {ev['location']}" if ev["location"] else ""
                 msg  = (f"Sir, you have '{ev['title']}'{loc} in {mins} minute"
                         f"{'s' if mins != 1 else ''}.")
-                print(f"[Calendar] ⏰ Reminder: {msg}")
-                self._inject(msg)
+                print(f"[Calendar] [Reminder] {msg}")
+
+                if self._bridge:
+                    try:
+                        from core.proactive_bridge import ProactiveEvent, ProactivePriority
+                        self._bridge.dispatch(ProactiveEvent(
+                            category="calendar",
+                            title=ev["title"],
+                            message=msg,
+                            priority=ProactivePriority.HIGH,
+                            ttl_seconds=float(self._remind_min * 60),
+                            dedup_key=key,
+                            data={"start": start.isoformat(), "location": ev.get("location", "")},
+                            channels={"voice", "ui", "mobile"},
+                        ))
+                    except Exception as e:
+                        print(f"[Calendar] [!] Bridge dispatch error: {e}")
+                        if self._inject:
+                            self._inject(msg)
+                elif self._inject:
+                    self._inject(msg)

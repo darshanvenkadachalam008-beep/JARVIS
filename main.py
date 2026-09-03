@@ -1572,6 +1572,15 @@ class JarvisLive:
                     pass
         self._emotion = VoiceEmotionDetector(on_state_change=_on_mood)
 
+        # ── Phase 4: Proactive Bridge (Unified Proactive Push) ────────────────
+        from core.proactive_bridge import ProactiveBridge
+        self._proactive_bridge = ProactiveBridge(
+            get_state=lambda: self._state_manager.state.name if hasattr(self, "_state_manager") else "LISTENING",
+            voice_sink=self.speak,
+            ui_sink=self.ui.write_log if self.ui else None,
+            interrupt_sink=self._interrupt_playback,
+        )
+
         self._proactive = ProactiveIntelligence(
             get_state  = lambda: self._state_manager.state,
             speak_fn   = self.speak,
@@ -1858,6 +1867,25 @@ class JarvisLive:
             self._loop
         )
 
+    def inject(self, text: str):
+        """Push a message into the live session from outside."""
+        if not self._loop or not self.session:
+            return
+        asyncio.run_coroutine_threadsafe(
+            self.session.send_client_content(
+                turns={"parts": [{"text": text}]},
+                turn_complete=True
+            ),
+            self._loop
+        )
+
+    async def _inject_text(self, text: str):
+        if self.session:
+            await self.session.send_client_content(
+                turns={"parts": [{"text": text}]},
+                turn_complete=True
+            )
+
     # ── Speaking state ───────────────────────────────────────────────────────
 
     def set_speaking(self, value: bool):
@@ -1879,6 +1907,9 @@ class JarvisLive:
                 self.ui.set_state("LISTENING")
             self._wake_detector.resume()
             self._state_manager.end_conversation()     # ACTIVE_CONVERSATION -> LISTENING (internal bookkeeping only)
+
+        if hasattr(self, "_proactive_bridge") and self._proactive_bridge:
+            self._proactive_bridge.on_state_change("SPEAKING" if value else "LISTENING")
 
     def _interrupt_playback(self):
         """Phase 2: Immediately stops playback, drains incoming audio queue, and opens mic for barge-in."""
@@ -2965,7 +2996,8 @@ class JarvisLive:
             self._calendar_reminder = CalendarReminder(
                 inject_fn=lambda msg: asyncio.run_coroutine_threadsafe(
                     self._inject_text(msg), self._loop
-                )
+                ) if self._loop else None,
+                bridge=getattr(self, "_proactive_bridge", None),
             )
             self._calendar_reminder.start()
         except Exception as _ce:
