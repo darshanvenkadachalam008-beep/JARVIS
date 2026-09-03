@@ -29,23 +29,14 @@ jobs:
 
       - name: Run Full Security Test Suite
         id: run_tests
+        shell: cmd
         run: |
-          python -m pytest tests/ -v --tb=short 2>&1 | Out-File -FilePath pytest_output.log -Encoding utf8
-          Get-Content pytest_output.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest tests/ -v --tb=short
 
       - name: Generate Security Status Dashboard
         if: always()
         run: |
           python -m core.security_status
-
-      - name: Upload Pytest Test Log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pytest-test-log
-          path: pytest_output.log
-          if-no-files-found: ignore
 
       - name: Upload Security Dashboard Report
         if: always()
@@ -62,8 +53,3 @@ jobs:
           echo "* **Platform**: Windows Server (windows-latest)" >> $env:GITHUB_STEP_SUMMARY
           echo "* **Python Version**: 3.10" >> $env:GITHUB_STEP_SUMMARY
           echo "* **Gate Status**: ${{ steps.run_tests.outcome }}" >> $env:GITHUB_STEP_SUMMARY
-          if (Test-Path pytest_output.log) {
-              echo '```' >> $env:GITHUB_STEP_SUMMARY
-              Get-Content pytest_output.log -Tail 50 >> $env:GITHUB_STEP_SUMMARY
-              echo '```' >> $env:GITHUB_STEP_SUMMARY
-          }
