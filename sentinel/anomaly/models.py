@@ -1,4 +1,4 @@
-﻿"""Data models for anomaly detection, geofencing baseline, and scoring."""
+"""Data models for anomaly detection, geofencing baseline, and scoring."""
 
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -30,6 +30,9 @@ class BaselineModel(BaseModel):
     known_networks: Dict[str, NetworkProfile] = Field(default_factory=dict)
     # Command tier activity rate {tier_name: count}
     tier_distribution: Dict[str, int] = Field(default_factory=dict)
+    # Sliding window cluster trackers (epoch timestamps)
+    face_failure_timestamps: List[float] = Field(default_factory=list)
+    watchdog_restart_timestamps: List[float] = Field(default_factory=list)
 
 
 class AnomalyVerdict(BaseModel):
@@ -39,3 +42,5 @@ class AnomalyVerdict(BaseModel):
     reasons: List[str] = Field(default_factory=list)
     elevate_friction: bool = Field(default=False)
     required_factors: List[str] = Field(default_factory=list)
+    risk_breakdown: Dict[str, float] = Field(default_factory=dict)
+

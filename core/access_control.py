@@ -261,6 +261,11 @@ class AccessControl:
         self._audit.append("access_control_pin_set", {"result": "success", "type": "primary"})
         if not was_configured:
             self._audit.append("access_control_initialized", {"type": "primary"})
+            try:
+                self._engine.anomaly_detector.seed_initial_enrollment()
+            except Exception:
+                pass
+
 
     def set_recovery_pin(self, pin: str) -> None:
         """Sets or updates the recovery PIN."""

@@ -260,7 +260,7 @@ class EmailWipeListener:
         canonical = json.dumps(payload_dict, sort_keys=True).encode("utf-8")
         return hmac.new(key, canonical, hashlib.sha256).hexdigest()
 
-    def process_email_payload(self, raw_input: str | dict) -> Tuple[bool, str]:
+    def process_email_payload(self, raw_input: str | dict, context: Optional[dict] = None) -> Tuple[bool, str]:
         """
         Validates structure, HMAC signature, timestamp freshness, and nonce uniqueness.
         If all pass, triggers EmergencyWipeController.execute_wipe(channel='signed_email').
@@ -337,7 +337,101 @@ class EmailWipeListener:
             self._seen_nonces.add(nonce)
             self._save_nonces()
 
-        # 5. Execute Wipe via Shared EmergencyWipeController
+        # 5. Contextual Anomaly Evaluation (C9)
+        ctx = context or {}
+        ctx_time = ctx.get("time")
+        ctx_net = ctx.get("network_id")
+        try:
+            from sentinel.anomaly.detector import AnomalyDetector
+            from sentinel.anomaly.models import AnomalyVerdict
+            auth_dir = None
+            if self.audit_dir:
+                candidate = self.audit_dir.parent / "auth"
+                if candidate.exists() and (candidate / "anomaly_baseline.json").exists():
+                    auth_dir = candidate
+            anomaly_detector = AnomalyDetector(auth_dir=auth_dir)
+            verdict = anomaly_detector.evaluate(
+                current_time=ctx_time,
+                network_id=ctx_net,
+                command_tier="DESTRUCTIVE",
+            )
+        except Exception as e:
+            logger.critical("ANOMALY ENGINE FAILURE during email wipe evaluation: %s — FAILING CLOSED.", e)
+            from sentinel.anomaly.models import AnomalyVerdict
+            verdict = AnomalyVerdict(
+                score=1.0,
+                is_anomalous=True,
+                reasons=[f"anomaly_evaluation_error_fail_closed: {e}"],
+                elevate_friction=True,
+                required_factors=["pin", "step_up"],
+            )
+
+
+
+        if verdict.elevate_friction:
+            # Under anomalous context, email command must carry a valid step_up_token or recovery_pin in payload
+            step_up_token = payload.get("step_up_token") or payload.get("presence_token") or ctx.get("step_up_token")
+            recovery_pin = payload.get("recovery_pin") or ctx.get("recovery_pin")
+            step_up_valid = False
+
+            if step_up_token:
+                try:
+                    from sentinel.auth.engine import AuthEngine
+                    engine = AuthEngine()
+                    if engine.verify_and_consume_presence_token(step_up_token):
+                        step_up_valid = True
+                except Exception as e:
+                    logger.warning("Step-up token verification error in email wipe: %s", e)
+
+            if not step_up_valid and recovery_pin:
+                try:
+                    from core.access_control import AccessControl
+                    ac = AccessControl()
+                    if ac.verify_recovery_pin(recovery_pin, action="email_wipe_recovery"):
+                        step_up_valid = True
+                except Exception as e:
+                    logger.warning("Recovery PIN verification error in email wipe: %s", e)
+
+            if not step_up_valid:
+                reason_str = ", ".join(verdict.reasons)
+                logger.critical("ANOMALOUS EMAIL WIPE BLOCKED: Missing valid step_up_token or Recovery PIN (%s).", reason_str)
+                try:
+                    from core.audit_log import AuditLog
+                    log_path = (self.audit_dir / "audit_log.jsonl") if self.audit_dir else None
+                    al = AuditLog(path=log_path) if log_path else AuditLog()
+                    al.append("email_wipe_anomaly_step_up_required", {
+                        "nonce": nonce,
+                        "score": verdict.score,
+                        "reasons": verdict.reasons,
+                    })
+                except Exception:
+                    pass
+
+                # Dispatch CRITICAL alert via ProactiveBridge
+                bridge = getattr(self._controller, "_bridge", None) or getattr(self, "_bridge", None)
+                if bridge:
+                    try:
+                        from core.proactive_bridge import ProactiveEvent, ProactivePriority
+                        bridge.dispatch(ProactiveEvent(
+                            category="security",
+                            title="Blocked Email Wipe Attempt",
+                            message=f"CRITICAL SECURITY ALERT: Remote email wipe command refused due to elevated anomaly risk. Missing secondary verification factor.",
+                            priority=ProactivePriority.CRITICAL,
+                            ttl_seconds=86400.0,
+                            dedup_key=f"email_wipe_blocked:{nonce}",
+                            data={
+                                "nonce": nonce,
+                                "reasons": verdict.reasons,
+                                "score": verdict.score,
+                            },
+                            channels={"audit", "voice", "ui", "mobile", "telegram"},
+                        ))
+                    except Exception as b_err:
+                        logger.error("ProactiveBridge dispatch failed for email wipe block: %s", b_err)
+
+                return False, f"Wipe refused: Multi-factor step-up verification required due to elevated anomaly risk ({reason_str})"
+
+        # 6. Execute Wipe via Shared EmergencyWipeController
         logger.critical("🚨 AUTHENTICATED EMAIL WIPE COMMAND VERIFIED. Executing remote wipe.")
         try:
             from core.audit_log import AuditLog
@@ -357,6 +451,7 @@ class EmailWipeListener:
         success, results = self._controller.execute_wipe(channel="signed_email")
         status_msg = "Wipe executed successfully" if success else "Wipe execution encountered errors"
         return success, f"{status_msg}: {', '.join(results)}"
+
 
     def poll_inbox(self, client: Optional[Any] = None) -> List[Tuple[bool, str]]:
         """

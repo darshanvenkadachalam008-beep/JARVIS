@@ -566,12 +566,18 @@ class EmergencyWipeController:
     _instance: Optional["EmergencyWipeController"] = None
     _lock = threading.Lock()
 
-    def __init__(self, wipe_paths: Optional[list] = None, confirmation_timeout_seconds: float = 60.0):
+    def __init__(
+        self,
+        wipe_paths: Optional[list] = None,
+        confirmation_timeout_seconds: float = 60.0,
+        bridge: Optional[Any] = None,
+    ):
         self._paths = wipe_paths if wipe_paths is not None else (_load_config().get("wipe_paths") or [])
         self._timeout = confirmation_timeout_seconds
         self._pending_lock = threading.Lock()
         self._pending_channel: Optional[str] = None
         self._pending_since: Optional[float] = None
+        self._bridge = bridge
 
     @classmethod
     def get_instance(cls) -> "EmergencyWipeController":
@@ -584,6 +590,9 @@ class EmergencyWipeController:
     def set_instance(cls, instance: Optional["EmergencyWipeController"]):
         with cls._lock:
             cls._instance = instance
+
+    def set_bridge(self, bridge: Optional[Any]) -> None:
+        self._bridge = bridge
 
     def request_wipe(self, channel: str = "telegram") -> tuple[bool, str]:
         """Initiates a pending wipe request with a 60-second confirmation window."""
@@ -600,9 +609,18 @@ class EmergencyWipeController:
         )
         return True, msg
 
-    def confirm_wipe(self, pin: str, channel: str = "telegram") -> tuple[bool, str, list[str]]:
+    def confirm_wipe(
+        self,
+        pin: str,
+        channel: str = "telegram",
+        context: Optional[dict] = None,
+        step_up_token: Optional[str] = None,
+        recovery_pin: Optional[str] = None,
+    ) -> tuple[bool, str, list[str]]:
         """
-        Validates confirmation timing and security PIN, then executes wipe.
+        Validates confirmation timing and security PIN with contextual anomaly detection.
+        Under anomalous context (unusual hour / unrecognized network), requires secondary
+        step-up verification (physical presence challenge token or Recovery PIN fallback).
         Returns: (success: bool, status_message: str, results: list[str])
         """
         with self._pending_lock:
@@ -619,6 +637,99 @@ class EmergencyWipeController:
         if not ac.verify_pin(pin, action="emergency_wipe"):
             return False, "❌ PIN incorrect or lockout active — wipe refused. This attempt was logged.", []
 
+        # ── Contextual Anomaly Evaluation (C9) ──────────────────────────────
+        ctx = context or {}
+        ctx_time = ctx.get("time")
+        ctx_net = ctx.get("network_id")
+        try:
+            anomaly_detector = getattr(ac._engine, "anomaly_detector", None) if hasattr(ac, "_engine") else None
+            if anomaly_detector is None:
+                from sentinel.anomaly.detector import AnomalyDetector
+                auth_dir = getattr(ac, "auth_dir", None)
+                anomaly_detector = AnomalyDetector(auth_dir=auth_dir)
+            verdict = anomaly_detector.evaluate(
+                current_time=ctx_time,
+                network_id=ctx_net,
+                command_tier="DESTRUCTIVE",
+            )
+        except Exception as e:
+            print(f"[Sentinel] Anomaly evaluation failed ({e}); failing closed to elevated friction.")
+            from sentinel.anomaly.models import AnomalyVerdict
+            verdict = AnomalyVerdict(
+                score=1.0,
+                is_anomalous=True,
+                reasons=[f"anomaly_evaluation_error_fail_closed: {e}"],
+                elevate_friction=True,
+                required_factors=["pin", "step_up"],
+            )
+
+
+        if verdict.elevate_friction:
+            # Multi-factor step-up required under elevated friction:
+            # 1. Valid local physical presence challenge token OR
+            # 2. Valid high-entropy Recovery PIN (remote disaster-recovery fallback)
+            step_up_valid = False
+            token = step_up_token or ctx.get("step_up_token") or ctx.get("presence_token")
+            rec_pin = recovery_pin or ctx.get("recovery_pin")
+
+            if token:
+                try:
+                    from sentinel.auth.engine import AuthEngine
+                    engine = AuthEngine()
+                    if engine.verify_and_consume_presence_token(token):
+                        step_up_valid = True
+                except Exception as e:
+                    print(f"[Sentinel] Step-up token verification error: {e}")
+
+            if not step_up_valid and rec_pin:
+                try:
+                    if ac.verify_recovery_pin(rec_pin, action="emergency_wipe_recovery"):
+                        step_up_valid = True
+                except Exception as e:
+                    print(f"[Sentinel] Recovery PIN verification error: {e}")
+
+            if not step_up_valid:
+                reason_str = ", ".join(verdict.reasons)
+                AlertHistory.record(
+                    "wipe_blocked_anomaly",
+                    f"Emergency wipe blocked on {channel} due to elevated anomaly risk",
+                    f"Missing step-up token / Recovery PIN. Reasons: {reason_str}",
+                    extra={"channel": channel, "score": verdict.score, "reasons": verdict.reasons},
+                )
+                try:
+                    from core.audit_log import AuditLog
+                    AuditLog().append("emergency_wipe_anomaly_step_up_required", {
+                        "channel": channel,
+                        "score": verdict.score,
+                        "reasons": verdict.reasons,
+                        "network_id": ctx_net,
+                    })
+                except Exception:
+                    pass
+
+                # Dispatch CRITICAL proactive alert via ProactiveBridge
+                if self._bridge:
+                    try:
+                        from core.proactive_bridge import ProactiveEvent, ProactivePriority
+                        self._bridge.dispatch(ProactiveEvent(
+                            category="security",
+                            title="Blocked Wipe Attempt",
+                            message=f"CRITICAL SECURITY ALERT: Remote emergency wipe attempt on channel '{channel}' refused due to elevated anomaly risk. Missing secondary verification factor.",
+                            priority=ProactivePriority.CRITICAL,
+                            ttl_seconds=86400.0,
+                            dedup_key=f"wipe_blocked:{channel}:{time.time()}",
+                            data={
+                                "channel": channel,
+                                "reasons": verdict.reasons,
+                                "score": verdict.score,
+                            },
+                            channels={"audit", "voice", "ui", "mobile", "telegram"},
+                        ))
+                    except Exception as b_err:
+                        print(f"[Sentinel] ProactiveBridge dispatch failed: {b_err}")
+
+                return False, f"❌ Wipe refused: Multi-factor step-up verification required due to elevated anomaly risk ({reason_str}). Provide valid Recovery PIN or Physical Presence Step-Up Token.", []
+
         with self._pending_lock:
             self._pending_since = None
             self._pending_channel = None
@@ -626,6 +737,7 @@ class EmergencyWipeController:
         success, results = self.execute_wipe(channel=channel)
         status_msg = "Wipe complete" if success else "Wipe encountered errors"
         return success, status_msg, results
+
 
     def execute_wipe(self, channel: str = "unknown") -> tuple[bool, list[str]]:
         """Executes moving configured wipe_paths to Recycle Bin via send2trash."""

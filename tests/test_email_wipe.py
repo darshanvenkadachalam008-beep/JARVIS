@@ -54,8 +54,12 @@ def mock_trash():
 def mock_wipe_controller(tmp_path, mock_trash):
     target_file = tmp_path / "sensitive_data.txt"
     target_file.write_text("classified data", encoding="utf-8")
+    auth_dir = tmp_path / "auth"
+    from sentinel.anomaly.detector import AnomalyDetector
+    AnomalyDetector(auth_dir=auth_dir).seed_initial_enrollment()
     controller = EmergencyWipeController(wipe_paths=[str(target_file)])
     return controller, target_file, mock_trash
+
 
 
 def test_valid_signed_email_triggers_shared_wipe_controller(tmp_path, mock_wipe_controller):
@@ -608,4 +612,94 @@ def test_export_key_tooling_recovers_identical_verifiable_key_without_leakage(tm
     # 3. Confirm no extraneous temp files leaked into directory
     remaining_files = list(tmp_path.glob("*.tmp*"))
     assert len(remaining_files) == 0
+
+
+def test_email_wipe_anomaly_step_up_refusal_and_proactive_alert(tmp_path, mock_wipe_controller):
+    """
+    Verifies that a validly signed email wipe received under anomalous context
+    (unusual hour / unknown network) is refused without step-up/recovery PIN,
+    and dispatches a CRITICAL alert through ProactiveBridge.
+    """
+    controller, target_file, mock_trash = mock_wipe_controller
+    bridge_mock = MagicMock()
+    controller.set_bridge(bridge_mock)
+
+    key = b"A" * 32
+    listener = EmailWipeListener(
+        hmac_key=key,
+        wipe_controller=controller,
+        nonce_store_path=tmp_path / "nonces.json",
+        audit_dir=tmp_path / "audit",
+    )
+
+    payload = {
+        "action": "emergency_wipe",
+        "timestamp": time.time(),
+        "nonce": "anomaly-nonce-111",
+        "reason": "untrusted_network_test",
+    }
+    signature = EmailWipeListener.compute_signature(key, payload)
+    command_dict = {"payload": payload, "signature": signature}
+
+    anomalous_context = {
+        "time": "2026-09-01T03:00:00",
+        "network_id": "wifi:UntrustedCoffeeShop",
+    }
+
+    success, msg = listener.process_email_payload(command_dict, context=anomalous_context)
+    assert success is False
+    assert "Wipe refused: Multi-factor step-up verification required" in msg
+    assert mock_trash.call_count == 0
+
+    # Verify ProactiveBridge CRITICAL dispatch
+    assert bridge_mock.dispatch.call_count == 1
+    event = bridge_mock.dispatch.call_args[0][0]
+    assert event.priority.name == "CRITICAL"
+    assert "Blocked Email Wipe Attempt" in event.title
+
+
+def test_email_wipe_anomaly_step_up_success_with_recovery_pin_in_payload(tmp_path, mock_wipe_controller):
+    """
+    Verifies that an email wipe under anomalous context succeeds when the
+    signed payload includes the valid recovery PIN.
+    """
+    controller, target_file, mock_trash = mock_wipe_controller
+    key = b"A" * 32
+    listener = EmailWipeListener(
+        hmac_key=key,
+        wipe_controller=controller,
+        nonce_store_path=tmp_path / "nonces.json",
+        audit_dir=tmp_path / "audit",
+    )
+
+
+    # Configure recovery PIN in AccessControl
+    from core.access_control import AccessControl
+    ac = AccessControl()
+    ac.set_pin("1234")
+    ac.set_recovery_pin("88888")
+
+    payload = {
+        "action": "emergency_wipe",
+        "timestamp": time.time(),
+        "nonce": "anomaly-recovery-nonce-222",
+        "reason": "traveling_disaster_recovery",
+        "recovery_pin": "88888",
+    }
+    signature = EmailWipeListener.compute_signature(key, payload)
+    command_dict = {"payload": payload, "signature": signature}
+
+    anomalous_context = {
+        "time": "2026-09-01T03:00:00",
+        "network_id": "wifi:UntrustedCoffeeShop",
+    }
+
+    with patch("core.access_control.AccessControl", return_value=ac):
+        success, msg = listener.process_email_payload(command_dict, context=anomalous_context)
+
+    assert success is True
+    assert "Wipe executed successfully" in msg
+    mock_trash.assert_called_once_with(str(target_file))
+
+
 

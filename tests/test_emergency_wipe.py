@@ -385,3 +385,89 @@ def test_independent_channels_telegram_failure_does_not_block_mobile(wipe_env):
     success, status_msg, results = controller.confirm_wipe("9876", channel="mobile_api")
     assert success is True
     assert mock_trash.call_count == 2
+
+
+def test_emergency_wipe_anomaly_step_up_refusal_and_proactive_alert(wipe_env):
+    """
+    Verifies that under anomalous context (e.g. 3 AM / unrecognized network):
+    1. A single Primary PIN is refused.
+    2. ProactiveBridge receives a CRITICAL security event.
+    3. AlertHistory and AuditLog record the blocked wipe.
+    4. Target files are NOT trashed.
+    """
+    controller = wipe_env["controller"]
+    mock_trash = wipe_env["mock_trash"]
+    bridge_mock = MagicMock()
+    controller.set_bridge(bridge_mock)
+
+    anomalous_context = {
+        "time": "2026-09-01T03:00:00",
+        "network_id": "wifi:UntrustedCoffeeShop",
+    }
+
+    controller.request_wipe(channel="telegram")
+    success, msg, results = controller.confirm_wipe("9876", channel="telegram", context=anomalous_context)
+
+    assert success is False
+    assert "Wipe refused: Multi-factor step-up verification required" in msg
+    assert mock_trash.call_count == 0
+
+    # Verify ProactiveBridge CRITICAL dispatch
+    assert bridge_mock.dispatch.call_count == 1
+    event = bridge_mock.dispatch.call_args[0][0]
+    assert event.priority.name == "CRITICAL"
+    assert event.category == "security"
+    assert "Blocked Wipe Attempt" in event.title
+    assert "telegram" in event.channels
+    assert "audit" in event.channels
+
+
+
+def test_emergency_wipe_anomaly_step_up_success_with_recovery_pin(wipe_env):
+    """
+    Verifies the remote disaster-recovery fallback:
+    Providing the valid Recovery PIN alongside the Primary PIN satisfies
+    elevated friction remotely and executes the wipe.
+    """
+    controller = wipe_env["controller"]
+    mock_trash = wipe_env["mock_trash"]
+    ac = wipe_env["ac"]
+    ac.set_recovery_pin("54321")
+
+    anomalous_context = {
+        "time": "2026-09-01T03:00:00",
+        "network_id": "wifi:UntrustedCoffeeShop",
+    }
+
+    controller.request_wipe(channel="mobile_app")
+    success, msg, results = controller.confirm_wipe(
+        "9876",
+        channel="mobile_app",
+        context=anomalous_context,
+        recovery_pin="54321",
+    )
+
+    assert success is True
+    assert msg == "Wipe complete"
+    assert mock_trash.call_count == 2
+
+
+def test_emergency_wipe_fail_closed_on_anomaly_evaluation_exception(wipe_env):
+    """
+    Verifies the fail-closed guarantee:
+    If AnomalyDetector.evaluate() throws an unhandled exception,
+    confirm_wipe() strictly defaults to elevated friction and refuses the wipe.
+    """
+    controller = wipe_env["controller"]
+    mock_trash = wipe_env["mock_trash"]
+    ac = wipe_env["ac"]
+
+    with patch.object(ac._engine.anomaly_detector, "evaluate", side_effect=RuntimeError("Corrupted baseline lock")):
+        controller.request_wipe(channel="telegram")
+        success, msg, results = controller.confirm_wipe("9876", channel="telegram")
+
+        assert success is False
+        assert "Wipe refused: Multi-factor step-up verification required" in msg
+        assert "fail_closed" in msg
+        assert mock_trash.call_count == 0
+

@@ -168,11 +168,19 @@ def _restart(reason: str, alert_fn=None):
     _restart_history.append(now)
 
     _log(f"🔁 Restarting JARVIS — reason: {reason}")
+    try:
+        from sentinel.anomaly.detector import AnomalyDetector
+        AnomalyDetector().record_watchdog_restart(timestamp=now, reason=reason)
+    except Exception as e:
+        _log(f"Could not record watchdog restart in AnomalyDetector: {e}")
+
+
     if len(_restart_history) >= RESTART_STORM_THRESHOLD:
         if alert_fn:
             alert_fn(len(_restart_history), RESTART_STORM_WINDOW_SECS)
         else:
             _alert_restart_storm(len(_restart_history), RESTART_STORM_WINDOW_SECS)
+
 
     _kill_pids_on_ports(PORTS_TO_CLEAR)
     _clear_stale_lock()

@@ -361,3 +361,130 @@ def test_step_up_token_reuse_is_rejected(tmp_path):
         )
 
 
+def test_face_verify_failure_clustering_raises_anomaly_score_and_friction(tmp_path):
+    """
+    Validates that 3+ face verify failures or spoof attempts within the 180s window
+    trigger face_failure_cluster_detected and elevate friction even in an otherwise normal context.
+    """
+    events = []
+    detector = AnomalyDetector(auth_dir=tmp_path, event_sink=lambda k, d: events.append((k, d)))
+
+    # Establish normal working hours baseline on HomeNet
+    for h in (9, 11, 13, 15):
+        for _ in range(3):
+            detector.record_success(datetime(2026, 9, 1, h, 0), "wifi:HomeNet")
+
+    # Baseline alone is normal
+    v_norm = detector.evaluate(datetime(2026, 9, 1, 13, 0), "wifi:HomeNet")
+    assert v_norm.score < FRICTION_THRESHOLD
+    assert v_norm.elevate_friction is False
+
+    now_ts = datetime(2026, 9, 1, 13, 0).timestamp()
+
+    # Record 3 face failures in quick succession (within 30 seconds)
+    detector.record_face_verify_failure(timestamp=now_ts - 20, is_spoof=False, confidence=88.5)
+    detector.record_face_verify_failure(timestamp=now_ts - 10, is_spoof=True, confidence=92.0)
+    count = detector.record_face_verify_failure(timestamp=now_ts, is_spoof=False, confidence=85.0)
+    assert count == 3
+
+    # Evaluation at the normal 1 PM on HomeNet is now elevated due to face clustering
+    verdict = detector.evaluate(datetime(2026, 9, 1, 13, 0), "wifi:HomeNet")
+    assert verdict.score >= FRICTION_THRESHOLD
+    assert verdict.elevate_friction is True
+    assert any("face_verify_failure_clustering" in r for r in verdict.reasons)
+    assert verdict.risk_breakdown.get("face_failure_clustering") == 0.50
+
+    # Verify event sink emitted face_failure_cluster_detected
+    cluster_events = [e for e in events if e[0] == "face_failure_cluster_detected"]
+    assert len(cluster_events) >= 1
+    assert cluster_events[0][1]["cluster_count"] >= 3
+
+
+def test_face_verify_failure_sliding_window_decay_and_success_damping(tmp_path):
+    """
+    Validates that:
+    1. Intermittent failures separated by > 180s decay and do not trigger friction.
+    2. A successful scan/auth clears the active failure cluster window (success damping).
+    """
+    detector = AnomalyDetector(auth_dir=tmp_path)
+    for h in (9, 11, 13, 15):
+        for _ in range(3):
+            detector.record_success(datetime(2026, 9, 1, h, 0), "wifi:HomeNet")
+
+    now_ts = datetime(2026, 9, 1, 13, 0).timestamp()
+
+    # 1. Stale failures from 10 minutes ago (> 180s window)
+    detector.record_face_verify_failure(timestamp=now_ts - 600)
+    detector.record_face_verify_failure(timestamp=now_ts - 400)
+    detector.record_face_verify_failure(timestamp=now_ts)  # Only 1 active failure
+
+    v1 = detector.evaluate(datetime(2026, 9, 1, 13, 0), "wifi:HomeNet")
+    assert v1.elevate_friction is False
+
+    # 2. Add 2 more failures to trigger cluster
+    detector.record_face_verify_failure(timestamp=now_ts + 10)
+    detector.record_face_verify_failure(timestamp=now_ts + 20)
+    v2 = detector.evaluate(datetime(2026, 9, 1, 13, 0, 30), "wifi:HomeNet")
+    assert v2.elevate_friction is True
+
+    # 3. Successful authentication / scan immediately damps/resets the failure cluster
+    detector.record_success(datetime(2026, 9, 1, 13, 1), "wifi:HomeNet")
+    v3 = detector.evaluate(datetime(2026, 9, 1, 13, 1), "wifi:HomeNet")
+    assert v3.elevate_friction is False
+
+
+def test_watchdog_restart_clustering_raises_anomaly_score_and_friction(tmp_path):
+    """
+    Validates that 3+ unexpected watchdog restarts within 300s trigger
+    watchdog_restart_cluster_detected and elevate friction.
+    """
+    events = []
+    detector = AnomalyDetector(auth_dir=tmp_path, event_sink=lambda k, d: events.append((k, d)))
+
+    for h in (9, 11, 13, 15):
+        for _ in range(3):
+            detector.record_success(datetime(2026, 9, 1, h, 0), "wifi:HomeNet")
+
+    now_ts = datetime(2026, 9, 1, 13, 0).timestamp()
+
+    # Record 3 unexpected restarts within 2 minutes (< 300s window)
+    detector.record_watchdog_restart(timestamp=now_ts - 100, reason="service_killed")
+    detector.record_watchdog_restart(timestamp=now_ts - 50, reason="service_killed")
+    count = detector.record_watchdog_restart(timestamp=now_ts, reason="service_killed")
+    assert count == 3
+
+    # Evaluation is elevated
+    verdict = detector.evaluate(datetime(2026, 9, 1, 13, 0), "wifi:HomeNet")
+    assert verdict.score >= FRICTION_THRESHOLD
+    assert verdict.elevate_friction is True
+    assert any("watchdog_restart_clustering" in r for r in verdict.reasons)
+    assert verdict.risk_breakdown.get("watchdog_restart_clustering") == 0.50
+
+    cluster_events = [e for e in events if e[0] == "watchdog_restart_cluster_detected"]
+    assert len(cluster_events) >= 1
+    assert cluster_events[0][1]["cluster_count"] >= 3
+
+
+def test_watchdog_restart_sliding_window_decay(tmp_path):
+    """
+    Validates that watchdog restarts older than 300s decay out and do not trigger friction.
+    """
+    detector = AnomalyDetector(auth_dir=tmp_path)
+    for h in (9, 11, 13, 15):
+        for _ in range(3):
+            detector.record_success(datetime(2026, 9, 1, h, 0), "wifi:HomeNet")
+
+    now_ts = datetime(2026, 9, 1, 13, 0).timestamp()
+
+    # Restarts from 1 hour ago
+    detector.record_watchdog_restart(timestamp=now_ts - 3600)
+    detector.record_watchdog_restart(timestamp=now_ts - 1800)
+    detector.record_watchdog_restart(timestamp=now_ts - 600)
+
+    # Evaluate now: all restarts decayed
+    verdict = detector.evaluate(datetime(2026, 9, 1, 13, 0), "wifi:HomeNet")
+    assert verdict.elevate_friction is False
+    assert "watchdog_restart_clustering" not in verdict.risk_breakdown
+
+
+

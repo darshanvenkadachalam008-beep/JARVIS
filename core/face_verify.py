@@ -381,7 +381,22 @@ class FaceVerifier:
         # Note: accepted strictly reflects identity recognition (face_found AND enrolled AND confidence <= threshold).
         # Anti-spoofing signal is reported independently via spoof_suspected / spoof_score.
         accepted = (label == OWNER_LABEL) and (confidence <= self.threshold)
+
+        # Cluster tracking in Sentinel AnomalyDetector
+        try:
+            from sentinel.anomaly.detector import AnomalyDetector
+            if not accepted or spoof_suspected:
+                AnomalyDetector().record_face_verify_failure(
+                    is_spoof=spoof_suspected,
+                    confidence=float(confidence) if confidence is not None else None,
+                )
+            else:
+                AnomalyDetector().clear_face_verify_failures()
+        except Exception as e:
+            print(f"[FaceVerify] AnomalyDetector cluster tracking update skipped: {e}")
+
         self._audit.append("face_identify", {
+
             "action": action,
             "result": "accepted" if accepted else "rejected",
             "confidence": round(float(confidence), 2),
