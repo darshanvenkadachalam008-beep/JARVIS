@@ -502,14 +502,13 @@ def test_intruder_alert_watcher_decision_path_controlled_harness():
 
 # ── 7. Production Startup Wiring Verification ─────────────────────────────────
 
-def test_production_startup_wires_proactive_bridge_ast_audit():
+def test_production_startup_wires_proactive_bridge_static_audit():
     """
-    AST and static call-site audit ensuring that all triggers
+    Static call-site audit ensuring that all triggers
     (EmergencyWipeController, BriefingScheduler, CalendarReminder, IntruderAlertWatcher)
     are genuinely wired to the ProactiveBridge instance at production application startup.
     Fails if any bridge wiring call site is omitted or removed from main.py or jarvis_service.py.
     """
-    import ast
     from pathlib import Path
 
     repo_root = Path(__file__).resolve().parent.parent
@@ -525,15 +524,16 @@ def test_production_startup_wires_proactive_bridge_ast_audit():
     )
 
     # 2. BriefingScheduler wired with bridge in main.py & jarvis_service.py
-    assert "BriefingScheduler(\n            on_briefing=self._on_scheduled_briefing,\n            bridge=self._proactive_bridge,\n        )" in main_py or "bridge=self._proactive_bridge" in main_py
-    assert "BriefingScheduler(\n            on_briefing=self._trigger_briefing,\n            bridge=self._proactive_bridge,\n        )" in service_py or "bridge=self._proactive_bridge" in service_py
+    assert "self._briefing_scheduler = BriefingScheduler(\n            on_briefing=self._on_scheduled_briefing,\n            bridge=self._proactive_bridge,\n        )" in main_py
+    assert "self._briefing = BriefingScheduler(\n            on_briefing=self._trigger_briefing,\n            bridge=self._proactive_bridge,\n        )" in service_py
 
     # 3. CalendarReminder wired with bridge in main.py & jarvis_service.py
-    assert "CalendarReminder(" in main_py and 'bridge=getattr(self, "_proactive_bridge", None)' in main_py
-    assert "CalendarReminder(" in service_py and 'bridge=getattr(self, "_proactive_bridge", None)' in service_py
+    assert 'self._calendar_reminder = CalendarReminder(\n                inject_fn=lambda msg: asyncio.run_coroutine_threadsafe(\n                    self._inject_text(msg), self._loop\n                ) if self._loop else None,\n                bridge=getattr(self, "_proactive_bridge", None),\n            )' in main_py
+    assert 'self._calendar_reminder = CalendarReminder(\n                inject_fn=lambda msg: self.inject(msg),\n                bridge=getattr(self, "_proactive_bridge", None),\n            )' in service_py
 
     # 4. IntruderAlertWatcher wired with bridge in jarvis_service.py
-    assert "IntruderAlertWatcher(" in service_py and "bridge   = self._proactive_bridge" in service_py
+    assert "self._intruder_alert = IntruderAlertWatcher(\n            on_alert = self._on_intruder_alert,\n            log_fn   = lambda msg: self._ui.write_log(msg) if self._ui else print(msg),\n            bridge   = self._proactive_bridge,\n        )" in service_py
+
 
 
 def test_jarvis_session_startup_wires_real_bridge_to_emergency_wipe_singleton():

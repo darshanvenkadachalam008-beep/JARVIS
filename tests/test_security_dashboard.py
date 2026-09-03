@@ -147,5 +147,7 @@ def test_ci_workflow_yaml_syntax_and_structure():
     assert job.get("runs-on") == "windows-latest"
 
     step_names = [s.get("name", "") for s in job.get("steps", [])]
+    assert any("Dependency Vulnerability Scan" in n for n in step_names)
     assert any("Run Full Security Test Suite" in n for n in step_names)
     assert any("Generate Security Status Dashboard" in n for n in step_names)
+
