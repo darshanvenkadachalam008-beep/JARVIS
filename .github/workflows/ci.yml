@@ -30,7 +30,8 @@ jobs:
       - name: Run Full Security Test Suite
         id: run_tests
         run: |
-          python -m pytest -v --tb=short
+          python -m pytest tests/ -v --tb=short | Tee-Object -FilePath pytest_output.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Generate Security Status Dashboard
         if: always()
@@ -52,3 +53,8 @@ jobs:
           echo "* **Platform**: Windows Server (windows-latest)" >> $env:GITHUB_STEP_SUMMARY
           echo "* **Python Version**: 3.10" >> $env:GITHUB_STEP_SUMMARY
           echo "* **Gate Status**: ${{ steps.run_tests.outcome }}" >> $env:GITHUB_STEP_SUMMARY
+          if (Test-Path pytest_output.log) {
+              echo '```' >> $env:GITHUB_STEP_SUMMARY
+              Get-Content pytest_output.log -Tail 50 >> $env:GITHUB_STEP_SUMMARY
+              echo '```' >> $env:GITHUB_STEP_SUMMARY
+          }
