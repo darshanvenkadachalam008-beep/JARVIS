@@ -1,74 +1,74 @@
-# JARVIS (Mark-XXXIX-OR) - Python dependencies
-# Install with:  pip install -r requirements.txt
-#
-# NOTE: this file must stay plain UTF-8 (no BOM, no UTF-16). Editing it with
-# some editors/encodings can silently corrupt it - pip then skips or
-# misreads lines without a clear error, which is what caused playwright
-# to be "in requirements.txt" but never actually get installed.
-
-# ── AI / LLM ──────────────────────────────────────────────────────────────
-google-genai
-google-generativeai
-
-# ── Voice / audio ─────────────────────────────────────────────────────────
-sounddevice
-pyaudio
-pydub
-edge-tts
-pyttsx3
-librosa
-openwakeword
-onnxruntime
-
-# ── Vision / screen / images ────────────────────────────────────────────
-pillow
-opencv-python
-mediapipe
-numpy
-mss
-
-# ── Desktop automation / UI control ─────────────────────────────────────
-pyautogui
-pyperclip
-pygetwindow
-pywinauto
-comtypes
-pycaw
-pygame
-PyQt6
-PyQt5
-
-# ── Web / search / browser automation ───────────────────────────────────
-requests
-beautifulsoup4
-ddgs
-playwright
-youtube-transcript-api
-
-# ── Google API integrations (calendar_intel.py) ─────────────────────────
-google-auth-oauthlib
-google-api-python-client
-
-# ── File processing (file_processor.py) ─────────────────────────────────
-PyPDF2
-python-docx
-python-pptx
-pdfplumber
-pandas
-
-# ── Memory / semantic search (memory_manager.py) ────────────────────────
-sentence-transformers
-
-# ── Mobile companion server (mobile_server.py) ──────────────────────────
-websockets
-firebase-admin
-
-# ── System / Windows integration ────────────────────────────────────────
-psutil
-send2trash
-win10toast
-pywin32
-
-# ── Security add-ons (secure_vault.py / access_control.py / audit_log.py) ─
-cryptography
+# JARVIS (Mark-XXXIX-OR) - Python dependencies
+# Install with:  pip install -r requirements.txt
+#
+# NOTE: this file must stay plain UTF-8 (no BOM, no UTF-16). Editing it with
+# some editors/encodings can silently corrupt it - pip then skips or
+# misreads lines without a clear error, which is what caused playwright
+# to be "in requirements.txt" but never actually get installed.
+
+# ── AI / LLM ──────────────────────────────────────────────────────────────
+google-genai
+google-generativeai
+
+# ── Voice / audio ─────────────────────────────────────────────────────────
+sounddevice
+pyaudio
+pydub
+edge-tts
+pyttsx3
+librosa
+openwakeword
+onnxruntime
+
+# ── Vision / screen / images ────────────────────────────────────────────
+pillow
+opencv-python
+mediapipe
+numpy
+mss
+
+# ── Desktop automation / UI control ─────────────────────────────────────
+pyautogui
+pyperclip
+pygetwindow
+pywinauto
+comtypes
+pycaw
+pygame
+PyQt6
+PyQt5
+
+# ── Web / search / browser automation ───────────────────────────────────
+requests
+beautifulsoup4
+ddgs
+playwright
+youtube-transcript-api
+
+# ── Google API integrations (calendar_intel.py) ─────────────────────────
+google-auth-oauthlib
+google-api-python-client
+
+# ── File processing (file_processor.py) ─────────────────────────────────
+pypdf>=3.9.0
+python-docx
+python-pptx
+pdfplumber
+pandas
+
+# ── Memory / semantic search (memory_manager.py) ────────────────────────
+sentence-transformers
+
+# ── Mobile companion server (mobile_server.py) ──────────────────────────
+websockets
+firebase-admin
+
+# ── System / Windows integration ────────────────────────────────────────
+psutil
+send2trash
+win10toast
+pywin32
+
+# ── Security add-ons (secure_vault.py / access_control.py / audit_log.py) ─
+cryptography
 keyring
