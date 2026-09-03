@@ -412,11 +412,13 @@ class IntruderAlertWatcher:
         log_fn: Optional[Callable[[str], None]] = None,
         enabled: bool = True,
         on_video_alert: Optional[Callable[[str, bytes], None]] = None,
+        bridge: Optional[Any] = None,
     ):
         self._on_alert = on_alert
         self._on_video_alert = on_video_alert
         self._log = log_fn or (lambda _msg: None)
         self._enabled = enabled
+        self._bridge = bridge
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._last_alert_ts = 0.0
@@ -453,7 +455,7 @@ class IntruderAlertWatcher:
             target=self._loop, daemon=True, name="IntruderAlertWatcher"
         )
         self._thread.start()
-        print("[IntruderAlert] 🛡️ Watcher started — monitoring failed logon attempts")
+        print("[IntruderAlert] [Security] Watcher started — monitoring failed logon attempts")
         self._log("SYS: Intruder alert watcher active — failed logins will alert your phone")
 
     def stop(self):
@@ -465,7 +467,7 @@ class IntruderAlertWatcher:
         try:
             cold_boot_events = _read_and_clear_cold_boot_queue()
             if cold_boot_events:
-                print(f"[IntruderAlert] 🛡️ Cold-Boot Queue: Flushing {len(cold_boot_events)} pending pre-network event(s)")
+                print(f"[IntruderAlert] [Security] Cold-Boot Queue: Flushing {len(cold_boot_events)} pending pre-network event(s)")
                 for ev in cold_boot_events:
                     ts_str = ev.get("timestamp", "")
                     try:
@@ -477,9 +479,9 @@ class IntruderAlertWatcher:
                     layer = ev.get("layer", "primary")
                     attempts = ev.get("attempt_count", 1)
                     if ev_type == "DURESS_LOGIN_SUCCESS":
-                        desc = f"🚨 SILENT DURESS ALERT: Successful logon under duress for user '{user}' (attempt: {attempts})"
+                        desc = f"[!] SILENT DURESS ALERT: Successful logon under duress for user '{user}' (attempt: {attempts})"
                     else:
-                        desc = f"⚠️ Pre-Login Alert (Cold-Boot Credential Provider): {ev_type} for user '{user}' (layer: {layer}, attempt: {attempts})"
+                        desc = f"[!] Pre-Login Alert (Cold-Boot Credential Provider): {ev_type} for user '{user}' (layer: {layer}, attempt: {attempts})"
                     self._fire_alert(
                         ev_dt,
                         bypass_debounce=True,
@@ -504,23 +506,23 @@ class IntruderAlertWatcher:
         new_events = [e for e in catchup_events if e[0] > last_alerted]
         if new_events:
             print(
-                f"[IntruderAlert] 🕒 Boot catch-up found {len(new_events)} "
+                f"[IntruderAlert] [Boot Catch-up] found {len(new_events)} "
                 f"failed logon(s) from before JARVIS started — alerting now"
             )
             for record_id, time_created in new_events:
-                print(f"[IntruderAlert] 🚨 Missed failed logon! RecordId={record_id} at {time_created}")
+                print(f"[IntruderAlert] [!] Missed failed logon! RecordId={record_id} at {time_created}")
                 self._fire_alert(time_created, bypass_debounce=True, record_id=record_id)
                 last_alerted = max(last_alerted, record_id)
             _save_last_alerted_record_id(last_alerted)
         else:
-            print("[IntruderAlert] 🕒 Boot catch-up — no missed failed logons found")
+            print("[IntruderAlert] [Boot Catch-up] no missed failed logons found")
 
         baseline_id = _get_latest_failed_logon_record_id()
         if baseline_id is None:
             baseline_id = max(last_alerted, 0)
-            print("[IntruderAlert] ⚠️ Could not read baseline")
+            print("[IntruderAlert] [!] Could not read baseline")
         else:
-            print(f"[IntruderAlert] ✅ Baseline RecordId={baseline_id} — watching for newer events")
+            print(f"[IntruderAlert] [OK] Baseline RecordId={baseline_id} — watching for newer events")
 
         highest_seen = max(baseline_id, last_alerted)
         while self._running:
@@ -540,7 +542,7 @@ class IntruderAlertWatcher:
         for record_id, time_created in events:
             if record_id > new_highest:
                 new_highest = record_id
-            print(f"[IntruderAlert] 🚨 New failed logon! RecordId={record_id} at {time_created}")
+            print(f"[IntruderAlert] [!] New failed logon! RecordId={record_id} at {time_created}")
             self._fire_alert(time_created, record_id=record_id)
 
         _save_last_alerted_record_id(new_highest)
@@ -548,11 +550,11 @@ class IntruderAlertWatcher:
 
     def fire_synthetic_alert(self, custom_msg: Optional[str] = None, record_id: Optional[int] = None):
         """Fires a synthetic intruder alert immediately, bypassing debounce."""
-        print("[IntruderAlert] 🧪 Triggering synthetic test alert...")
+        print("[IntruderAlert] [Test] Triggering synthetic test alert...")
         self._fire_alert(
             when=datetime.now(),
             bypass_debounce=True,
-            custom_msg=custom_msg or f"🧪 SYNTHETIC TEST ALERT — Intruder Alert Pipeline Test on {self._hostname}",
+            custom_msg=custom_msg or f"[Test] SYNTHETIC TEST ALERT — Intruder Alert Pipeline Test on {self._hostname}",
             record_id=record_id or 9999999,
         )
 
@@ -568,7 +570,7 @@ class IntruderAlertWatcher:
     ):
         now = time.monotonic()
         if not bypass_debounce and now - self._last_alert_ts < DEBOUNCE_SECONDS:
-            print("[IntruderAlert] ⏱ Debounced")
+            print("[IntruderAlert] [Debounce] Debounced")
             return
         self._last_alert_ts = now
 
@@ -588,53 +590,81 @@ class IntruderAlertWatcher:
                 elif face_result.accepted:
                     face_note = " — webcam face matches the enrolled owner"
                 else:
-                    face_note = " — ⚠️ webcam face does NOT match the enrolled owner"
+                    face_note = " — [!] webcam face does NOT match the enrolled owner"
         except Exception as e:
             print(f"[IntruderAlert] Face identity check error (non-fatal): {e}")
 
         if custom_msg:
             text = f"{custom_msg}{face_note}"
         else:
-            text = f"⚠️ Failed login attempt on {self._hostname} at {time_str}{face_note}"
-        print(f"[IntruderAlert] 🔔 Firing alert: {text}")
+            text = f"[!] Failed login attempt on {self._hostname} at {time_str}{face_note}"
+        print(f"[IntruderAlert] [Alert] Firing alert: {text}")
 
-        # 1. Local Hash-Chained Audit Record (independent local forensic record written before network calls)
-        try:
-            if self._audit:
+        # ── Route through ProactiveBridge (CRITICAL priority) ───────────────
+        if self._bridge:
+            try:
+                from core.proactive_bridge import ProactiveEvent, ProactivePriority
                 ev_name = event_type or ("duress_logon_success" if (custom_msg and "DURESS" in custom_msg) else "failed_logon")
-                self._audit.log_event(
-                    event_type=ev_name,
-                    actor=actor or "system",
-                    details=details or {"message": text, "record_id": record_id, "time": time_str},
-                )
-        except Exception as e:
-            print(f"[IntruderAlert] Audit log write error: {e}")
-            self._log(f"SYS: ⚠️ Audit write error: {e}")
+                self._bridge.dispatch(ProactiveEvent(
+                    category="security",
+                    title="Duress Alert" if (custom_msg and "DURESS" in custom_msg) else "Intruder Alert",
+                    message=text,
+                    priority=ProactivePriority.CRITICAL,
+                    ttl_seconds=86400.0,
+                    dedup_key=f"intruder:{record_id or time_str}",
+                    data={
+                        "hostname": self._hostname,
+                        "time": time_str,
+                        "record_id": record_id,
+                        "event_type": ev_name,
+                        "actor": actor or "system",
+                        "details": details or {"message": text, "record_id": record_id, "time": time_str},
+                        "jpeg_bytes": jpeg_bytes,
+                    },
+                    channels={"audit", "voice", "ui", "mobile", "telegram"},
+                ))
+            except Exception as e:
+                print(f"[IntruderAlert] Bridge dispatch error: {e}")
+                self._log(f"SYS: ⚠️ Bridge dispatch error: {e}")
+        else:
+            # Fallback path if no bridge is configured
+            # 1. Local Hash-Chained Audit Record
+            try:
+                if self._audit:
+                    ev_name = event_type or ("duress_logon_success" if (custom_msg and "DURESS" in custom_msg) else "failed_logon")
+                    self._audit.log_event(
+                        event_type=ev_name,
+                        actor=actor or "system",
+                        details=details or {"message": text, "record_id": record_id, "time": time_str},
+                    )
+            except Exception as e:
+                print(f"[IntruderAlert] Audit log write error: {e}")
+                self._log(f"SYS: ⚠️ Audit write error: {e}")
 
-        # 2. Telegram — hacker-themed message (primary, works on any network)
-        try:
-            if self._telegram and self._telegram.configured:
-                def _tg_worker():
-                    try:
-                        self._telegram.send_alert(text, jpeg_bytes, hostname=self._hostname, time_str=time_str)
-                    except Exception as e:
-                        print(f"[IntruderAlert] Telegram background delivery error: {e}")
-                threading.Thread(target=_tg_worker, daemon=True).start()
-            else:
-                rec_info = f" for RecordId={record_id}" if record_id is not None else f" (time: {time_str})"
-                warn_msg = f"[IntruderAlert] ⚠️ Telegram not configured — alert NOT sent via Telegram{rec_info}"
-                print(warn_msg)
-                self._log(f"SYS: {warn_msg}")
-        except Exception as e:
-            print(f"[IntruderAlert] Telegram dispatch error: {e}")
-            self._log(f"SYS: ⚠️ Telegram dispatch error: {e}")
+            # 2. Telegram — hacker-themed message
+            try:
+                if self._telegram and self._telegram.configured:
+                    def _tg_worker():
+                        try:
+                            self._telegram.send_alert(text, jpeg_bytes, hostname=self._hostname, time_str=time_str)
+                        except Exception as e:
+                            print(f"[IntruderAlert] Telegram background delivery error: {e}")
+                    threading.Thread(target=_tg_worker, daemon=True).start()
+                else:
+                    rec_info = f" for RecordId={record_id}" if record_id is not None else f" (time: {time_str})"
+                    warn_msg = f"[IntruderAlert] ⚠️ Telegram not configured — alert NOT sent via Telegram{rec_info}"
+                    print(warn_msg)
+                    self._log(f"SYS: {warn_msg}")
+            except Exception as e:
+                print(f"[IntruderAlert] Telegram dispatch error: {e}")
+                self._log(f"SYS: ⚠️ Telegram dispatch error: {e}")
 
-        # 3. MobileServer WebSocket + FCM (backup)
-        try:
-            self._on_alert(text, jpeg_bytes)
-        except Exception as e:
-            print(f"[IntruderAlert] on_alert callback error: {e}")
-            self._log(f"SYS: ⚠️ IntruderAlert on_alert callback error: {e}")
+            # 3. MobileServer WebSocket + FCM
+            try:
+                self._on_alert(text, jpeg_bytes)
+            except Exception as e:
+                print(f"[IntruderAlert] on_alert callback error: {e}")
+                self._log(f"SYS: ⚠️ IntruderAlert on_alert callback error: {e}")
 
         # 4. Asynchronous Video Clip Capture (follows up fast still alert without delaying it)
         def _clip_worker():

@@ -335,3 +335,168 @@ def test_briefing_scheduler_dedup_daily_state():
         scheduler._check()
         assert len(dispatched_events) == 1
 
+
+# ── 6. Intruder Alert & CRITICAL Security Priority Bridge Tests ───────────────
+
+def test_bridge_critical_security_dispatch_synchronous_audit_before_voice_and_interrupt():
+    """
+    Verifies that for CRITICAL priority events, the audit hash-chain entry is
+    written synchronously BEFORE voice interruption and delivery, ensuring that
+    a crash or exception in voice playback cannot prevent audit logging.
+    """
+    call_order = []
+
+    def mock_audit(cat, actor, details):
+        call_order.append("audit")
+
+    def mock_interrupt():
+        call_order.append("interrupt")
+
+    def mock_voice(msg):
+        call_order.append("voice")
+        raise RuntimeError("Simulated crash in TTS engine")
+
+    bridge = ProactiveBridge(
+        get_state=lambda: "SPEAKING",
+        voice_sink=mock_voice,
+        interrupt_sink=mock_interrupt,
+        audit_sink=mock_audit,
+    )
+
+    ev = ProactiveEvent(
+        category="security",
+        title="Intruder Alert",
+        message="Unauthorized logon attempt detected",
+        priority=ProactivePriority.CRITICAL,
+        channels={"audit", "voice"},
+    )
+
+    assert bridge.dispatch(ev) is True
+    # Audit must be executed first, before interrupt and voice
+    assert call_order == ["audit", "interrupt", "voice"]
+
+
+def test_bridge_critical_security_dispatch_works_with_blocked_event_loop():
+    """
+    Verifies that CRITICAL proactive dispatch works completely independently
+    even when the main asyncio event loop is fully blocked (frozen).
+    """
+    import asyncio
+
+    # Set up a dedicated asyncio loop and block it with a long synchronous sleep
+    loop = asyncio.new_event_loop()
+    loop_thread_started = threading.Event()
+    loop_blocked = threading.Event()
+
+    def _run_blocked_loop():
+        asyncio.set_event_loop(loop)
+        async def _blocker():
+            loop_thread_started.set()
+            loop_blocked.wait(timeout=2.0)  # Simulating a blocked event loop
+        loop.run_until_complete(_blocker())
+
+    t = threading.Thread(target=_run_blocked_loop, daemon=True)
+    t.start()
+    assert loop_thread_started.wait(timeout=1.0) is True
+
+    audit_records = []
+    interrupted = []
+    spoken_messages = []
+    ui_messages = []
+    telegram_messages = []
+    mobile_messages = []
+
+    bridge = ProactiveBridge(
+        get_state=lambda: "SPEAKING",
+        voice_sink=lambda msg: spoken_messages.append(msg),
+        interrupt_sink=lambda: interrupted.append(True),
+        ui_sink=lambda msg: ui_messages.append(msg),
+        audit_sink=lambda cat, actor, d: audit_records.append((cat, actor, d)),
+        telegram_sink=lambda msg, jpeg: telegram_messages.append((msg, jpeg)),
+        mobile_sink=lambda msg, jpeg: mobile_messages.append((msg, jpeg)),
+    )
+
+    ev = ProactiveEvent(
+        category="security",
+        title="Intruder Detected",
+        message="Intruder alert on DESKTOP-MAIN: failed password",
+        priority=ProactivePriority.CRITICAL,
+        channels={"audit", "voice", "ui", "telegram", "mobile"},
+        data={"hostname": "DESKTOP-MAIN", "jpeg_bytes": b"fake_intruder_face"},
+    )
+
+    # Dispatch while asyncio loop is 100% blocked
+    t_start = time.time()
+    assert bridge.dispatch(ev) is True
+    dispatch_duration = time.time() - t_start
+
+    # Dispatch itself returns almost instantly (does not wait on asyncio)
+    assert dispatch_duration < 0.1
+    assert len(audit_records) == 1
+    assert len(interrupted) == 1
+    assert len(spoken_messages) == 1
+    assert len(ui_messages) == 1
+
+    # Asynchronous workers for telegram and mobile finish in background threads
+    t0 = time.time()
+    while (len(telegram_messages) == 0 or len(mobile_messages) == 0) and time.time() - t0 < 1.0:
+        time.sleep(0.01)
+
+    assert len(telegram_messages) == 1
+    assert len(mobile_messages) == 1
+
+    # Clean up blocked loop
+    loop_blocked.set()
+    t.join(timeout=1.0)
+
+
+def test_intruder_alert_watcher_decision_path_controlled_harness():
+    """
+    Controlled harness verifying that IntruderAlertWatcher's real detection
+    decision path (_fire_alert) captures the frame, checks face identity,
+    and dispatches a CRITICAL ProactiveEvent through ProactiveBridge.
+    """
+    from core.intruder_alert import IntruderAlertWatcher
+
+    dispatched_events = []
+    interrupted = []
+    audit_events = []
+
+    bridge = ProactiveBridge(
+        get_state=lambda: "SPEAKING",
+        voice_sink=lambda msg: dispatched_events.append(msg),
+        interrupt_sink=lambda: interrupted.append(True),
+        audit_sink=lambda cat, actor, d: audit_events.append((cat, actor, d)),
+    )
+
+    watcher = IntruderAlertWatcher(
+        on_alert=lambda txt, jpeg: None,
+        bridge=bridge,
+    )
+
+    with patch("core.intruder_alert._take_webcam_snapshot", return_value=b"jpeg_data"), \
+         patch("core.face_verify.FaceVerifier.identify", return_value=None):
+
+        # Exercise the real _fire_alert decision path for a failed login
+        now_dt = datetime.now()
+        watcher._fire_alert(
+            when=now_dt,
+            bypass_debounce=True,
+            record_id=4625,
+            event_type="failed_logon",
+            actor="darshan",
+            details={"message": "Failed logon at lockscreen", "record_id": 4625},
+        )
+
+    # 1. Audit logged synchronously
+    assert len(audit_events) == 1
+    assert audit_events[0][0] == "security"
+
+    # 2. Ongoing playback interrupted
+    assert len(interrupted) == 1
+
+    # 3. Spoken voice alert delivered immediately
+    assert len(dispatched_events) == 1
+    assert "Failed login attempt" in dispatched_events[0]
+
+

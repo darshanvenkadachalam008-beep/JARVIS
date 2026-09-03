@@ -1499,7 +1499,29 @@ class JarvisTrayApp:
             on_intercom_stop  = self._on_intercom_stop,
             on_intercom_audio = self._on_intercom_audio_received,
         )
-        self._mobile.start()
+        # ── Phase 4: Proactive Bridge (Daemon-level unified push) ─────────────
+        from core.proactive_bridge import ProactiveBridge
+        self._proactive_bridge = ProactiveBridge(
+            get_state=lambda: "SPEAKING" if (self._session and getattr(self._session, "_is_speaking", False)) else "LISTENING",
+            voice_sink=lambda msg: self._session.speak(msg) if self._session else None,
+            ui_sink=lambda msg: self._ui.write_log(msg) if self._ui else None,
+            interrupt_sink=lambda: self._session._interrupt_playback() if self._session else None,
+        )
+        try:
+            from sentinel.audit import AuditLogger
+            _audit = AuditLogger()
+            self._proactive_bridge.set_audit_sink(lambda cat, actor, details: _audit.log_event(cat, actor, details))
+        except Exception:
+            pass
+        try:
+            from core.telegram_alert import TelegramAlerter
+            _tg = TelegramAlerter()
+            if _tg.configured:
+                self._proactive_bridge.set_telegram_sink(lambda msg, jpeg: _tg.send_alert(msg, jpeg))
+        except Exception:
+            pass
+        if self._mobile:
+            self._proactive_bridge.set_mobile_sink(lambda msg, jpeg: self._on_intruder_alert(msg, jpeg))
 
         # ── Phase 7: Failed-login mobile alert ──────────────────────────────────
         # Watches Windows' own Security Event Log for failed logon attempts
@@ -1511,6 +1533,7 @@ class JarvisTrayApp:
         self._intruder_alert = IntruderAlertWatcher(
             on_alert = self._on_intruder_alert,
             log_fn   = lambda msg: self._ui.write_log(msg) if self._ui else print(msg),
+            bridge   = self._proactive_bridge,
         )
         self._intruder_alert.start()
 
@@ -1607,7 +1630,7 @@ class JarvisTrayApp:
 
         self._briefing = BriefingScheduler(
             on_briefing=self._trigger_briefing,
-            bridge=getattr(self._session, "_proactive_bridge", None),
+            bridge=self._proactive_bridge,
         )
         self._briefing.start()
 

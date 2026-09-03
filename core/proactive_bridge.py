@@ -171,25 +171,39 @@ class ProactiveBridge:
             logger.debug("Proactive event '%s' dropped by dedup cache", dedup_key)
             return False
 
-        # ── 1. Loop-Independent Out-of-Band Delivery (Audit, Mobile, Telegram, UI) ──
-        # CRITICAL and out-of-band notifications are fanned out in dedicated worker
-        # threads so they NEVER block on or wait for the main asyncio event loop.
+        # ── 1. Hash-Chained Audit Record (Mandatory & Fail-Safe) ──────────────
+        # For CRITICAL priority events, the audit hash-chain entry is committed
+        # SYNCHRONOUSLY and BEFORE any voice interruption, UI logging, or network
+        # delivery so that a crash, unhandled exception, or interrupt mid-dispatch
+        # can never produce an alert that fails to be forensically recorded.
         if "audit" in event.channels and self._audit_sink:
-            self._dispatch_async_audit(event)
+            if event.priority == ProactivePriority.CRITICAL:
+                try:
+                    self._audit_sink(
+                        event.category,
+                        "proactive_bridge",
+                        {"title": event.title, "message": event.message, "priority": int(event.priority), **event.data},
+                    )
+                except Exception as e:
+                    logger.error("Synchronous critical audit write error: %s", e)
+            else:
+                self._dispatch_async_audit(event)
 
+        # ── 2. Out-of-Band Network Delivery (Telegram, Mobile) ────────────────
         if "telegram" in event.channels and self._telegram_sink:
             self._dispatch_async_telegram(event)
 
         if "mobile" in event.channels and self._mobile_sink:
             self._dispatch_async_mobile(event)
 
+        # ── 3. UI Sink Delivery ───────────────────────────────────────────────
         if "ui" in event.channels and self._ui_sink:
             try:
                 self._ui_sink(f"PROACTIVE: [{event.category.upper()}] {event.message}")
             except Exception as e:
                 logger.error("UI sink error: %s", e)
 
-        # ── 2. Voice Delivery & State-Gated Queueing ───────────────────────────
+        # ── 4. Voice Delivery & Priority-Aware Interruption / Queueing ────────
         if "voice" in event.channels and self._voice_sink:
             self._dispatch_voice(event)
 
