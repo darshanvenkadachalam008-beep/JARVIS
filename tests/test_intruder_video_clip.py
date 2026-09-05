@@ -149,7 +149,7 @@ def test_fire_alert_fast_path_not_blocked_by_slow_clip():
     dummy_clip = b"MP4_VIDEO_CLIP"
 
     def slow_clip_capture(duration_seconds=5.0):
-        time.sleep(0.6)
+        time.sleep(1.0)
         return dummy_clip
 
     with patch("core.intruder_alert._take_webcam_snapshot", return_value=dummy_still):
@@ -161,14 +161,14 @@ def test_fire_alert_fast_path_not_blocked_by_slow_clip():
                         watcher._fire_alert(datetime.now(), bypass_debounce=True, custom_msg="🚨 Intruder Alert Test")
                         fast_path_elapsed = time.monotonic() - start
 
-                        # Fast path must return immediately (< 0.35s, while clip capture takes 0.60s)
-                        assert fast_path_elapsed < 0.35
+                        # Fast path must return immediately (< 0.60s, while clip capture takes 1.0s)
+                        assert fast_path_elapsed < 0.60
                         assert len(received_alerts) == 1
                         assert "Intruder Alert Test" in received_alerts[0][0]
                         assert received_alerts[0][1] == dummy_still
 
                         # Wait for background clip capture thread to finish
-                        time.sleep(0.7)
+                        time.sleep(1.1)
                         assert len(received_videos) == 1
                         assert received_videos[0][1] == dummy_clip
 

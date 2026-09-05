@@ -1715,6 +1715,13 @@ class JarvisLive:
         except Exception as _we:
             print(f"[WipeController] Bridge wiring skipped: {_we}")
 
+        # Pre-warm LocationProvider cache in background at startup
+        try:
+            from core.location_provider import LocationProvider
+            LocationProvider.get_instance().get_location(non_blocking=True)
+        except Exception as _lpe:
+            print(f"[LocationProvider] Pre-warm skipped: {_lpe}")
+
         # Phase 1 & 4: proactive briefing scheduler wired to ProactiveBridge
         self._briefing_scheduler = BriefingScheduler(
             on_briefing=self._on_scheduled_briefing,

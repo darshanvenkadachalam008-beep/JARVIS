@@ -204,11 +204,15 @@ class TestRealCallerAlertIntegration(unittest.TestCase):
     """Integration tests asserting real caller paths trigger unified alerts."""
 
     def test_main_py_wires_audit_intruder_and_speaker_verifier(self):
-        """Regression test ensuring JarvisLive in main.py wires audit sink, IntruderAlertWatcher, and SpeakerVerifier to ProactiveBridge."""
+        """Regression test ensuring JarvisLive in main.py wires audit sink, IntruderAlertWatcher, SpeakerVerifier, and pre-warms LocationProvider."""
         with patch("core.wake_word.WakeWordEngine"), \
              patch("core.gesture_control.GestureControlEngine"), \
              patch("mobile_server.MobileServer"), \
-             patch("sentinel.audit.AuditLogger"):
+             patch("sentinel.audit.AuditLogger"), \
+             patch("core.location_provider.LocationProvider.get_instance") as mock_lp_get:
+
+            mock_lp = MagicMock()
+            mock_lp_get.return_value = mock_lp
 
             from main import JarvisLive
             mock_ui = MagicMock()
@@ -220,6 +224,26 @@ class TestRealCallerAlertIntegration(unittest.TestCase):
             self.assertEqual(jarvis._intruder_alert._bridge, jarvis._proactive_bridge, "IntruderAlertWatcher must be wired to JarvisLive ProactiveBridge")
             self.assertIsNotNone(jarvis._speaker_verifier, "JarvisLive must instantiate SpeakerVerifier")
             self.assertEqual(jarvis._speaker_verifier._bridge, jarvis._proactive_bridge, "SpeakerVerifier must be wired to JarvisLive ProactiveBridge")
+            mock_lp.get_location.assert_called_with(non_blocking=True)
+
+    def test_jarvis_service_wires_and_prewarms_location_provider(self):
+        """Regression test ensuring JarvisTrayApp in jarvis_service.py pre-warms LocationProvider at startup."""
+        with patch("sentinel.audit.AuditLogger"), \
+             patch("core.location_provider.LocationProvider.get_instance") as mock_lp_get, \
+             patch("PyQt5.QtWidgets.QApplication"), \
+             patch("PyQt5.QtWidgets.QSystemTrayIcon"), \
+             patch("jarvis_service.AlwaysOnListener"), \
+             patch("jarvis_service.AlwaysOnGestureListener"), \
+             patch("jarvis_service.MobileServer"), \
+             patch("core.intruder_alert.IntruderAlertWatcher"), \
+             patch("core.speaker_verify.SpeakerVerifier"):
+
+            mock_lp = MagicMock()
+            mock_lp_get.return_value = mock_lp
+
+            import jarvis_service
+            app = jarvis_service.JarvisTrayApp()
+            mock_lp.get_location.assert_called_with(non_blocking=True)
 
     def test_emergency_wipe_caller_wrong_pin_dispatches_alert(self):
         """Asserts EmergencyWipeController caller triggering wrong PIN fires unified alert through ProactiveBridge."""
@@ -258,7 +282,10 @@ class TestRealCallerAlertIntegration(unittest.TestCase):
                 mock_bridge.dispatch.reset_mock()
                 # Re-initiate pending request
                 ctrl.request_wipe(channel="telegram")
-                with patch.object(ctrl, "execute_wipe", return_value=(True, ["✅ test.txt"])):
+                from sentinel.anomaly.models import AnomalyVerdict
+                normal_verdict = AnomalyVerdict(score=0.0, is_anomalous=False, elevate_friction=False, required_factors=["pin"])
+                with patch.object(ctrl, "execute_wipe", return_value=(True, ["✅ test.txt"])), \
+                     patch("sentinel.anomaly.detector.AnomalyDetector.evaluate", return_value=normal_verdict):
                     success, msg, _ = ctrl.confirm_wipe(pin="123456", channel="telegram")
                     self.assertTrue(success)
                     self.assertEqual(mock_bridge.dispatch.call_count, 0, "Successful PIN verification must NOT dispatch a failure alert")

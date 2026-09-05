@@ -1545,6 +1545,13 @@ class JarvisTrayApp:
         except Exception as _we:
             print(f"[WipeController] Bridge wiring skipped: {_we}")
 
+        # Pre-warm LocationProvider cache in background at startup
+        try:
+            from core.location_provider import LocationProvider
+            LocationProvider.get_instance().get_location(non_blocking=True)
+        except Exception:
+            pass
+
         # ── Phase 7: Failed-login mobile alert ──────────────────────────────────
 
         # Watches Windows' own Security Event Log for failed logon attempts
