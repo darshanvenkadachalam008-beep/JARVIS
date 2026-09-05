@@ -177,11 +177,12 @@ class ProactiveBridge:
         # delivery so that a crash, unhandled exception, or interrupt mid-dispatch
         # can never produce an alert that fails to be forensically recorded.
         if "audit" in event.channels and self._audit_sink:
+            actor_name = event.data.get("actor", "proactive_bridge") if isinstance(event.data, dict) else "proactive_bridge"
             if event.priority == ProactivePriority.CRITICAL:
                 try:
                     self._audit_sink(
                         event.category,
-                        "proactive_bridge",
+                        actor_name,
                         {"title": event.title, "message": event.message, "priority": int(event.priority), **event.data},
                     )
                 except Exception as e:

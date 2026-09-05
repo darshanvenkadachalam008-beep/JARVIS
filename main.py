@@ -1686,6 +1686,20 @@ class JarvisLive:
             ui_sink=self.ui.write_log if self.ui else None,
             interrupt_sink=self._interrupt_playback,
         )
+        try:
+            from sentinel.audit import AuditLogger
+            _audit = AuditLogger()
+            self._proactive_bridge.set_audit_sink(lambda cat, actor, details: _audit.log_event(cat, actor, details))
+        except Exception as _ae:
+            print(f"[ProactiveBridge] Audit sink initialization skipped: {_ae}")
+
+        try:
+            from core.telegram_alert import TelegramAlerter
+            _tg = TelegramAlerter()
+            if _tg.configured:
+                self._proactive_bridge.set_telegram_sink(lambda msg, jpeg: _tg.send_alert(msg, jpeg))
+        except Exception as _tge:
+            print(f"[ProactiveBridge] Telegram sink initialization skipped: {_tge}")
 
         # Wire EmergencyWipeController singleton to ProactiveBridge for CRITICAL blocked wipe alerts
         try:
@@ -1752,6 +1766,8 @@ class JarvisLive:
                 on_intercom_stop  = self._on_intercom_stop,
                 on_intercom_audio = self._on_intercom_audio_received,
             )
+            if hasattr(self, "_proactive_bridge") and self._proactive_bridge:
+                self._proactive_bridge.set_mobile_sink(lambda msg, jpeg: self._mobile.notify(msg) if self._mobile else None)
         except Exception as _me:
             print(f"[Mobile] Initialization skipped: {_me}")
             self._mobile = None

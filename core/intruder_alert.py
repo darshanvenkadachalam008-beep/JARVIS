@@ -600,71 +600,28 @@ class IntruderAlertWatcher:
             text = f"[!] Failed login attempt on {self._hostname} at {time_str}{face_note}"
         print(f"[IntruderAlert] [Alert] Firing alert: {text}")
 
-        # ── Route through ProactiveBridge (CRITICAL priority) ───────────────
-        if self._bridge:
-            try:
-                from core.proactive_bridge import ProactiveEvent, ProactivePriority
-                ev_name = event_type or ("duress_logon_success" if (custom_msg and "DURESS" in custom_msg) else "failed_logon")
-                self._bridge.dispatch(ProactiveEvent(
-                    category="security",
-                    title="Duress Alert" if (custom_msg and "DURESS" in custom_msg) else "Intruder Alert",
-                    message=text,
-                    priority=ProactivePriority.CRITICAL,
-                    ttl_seconds=86400.0,
-                    dedup_key=f"intruder:{record_id or time_str}",
-                    data={
-                        "hostname": self._hostname,
-                        "time": time_str,
-                        "record_id": record_id,
-                        "event_type": ev_name,
-                        "actor": actor or "system",
-                        "details": details or {"message": text, "record_id": record_id, "time": time_str},
-                        "jpeg_bytes": jpeg_bytes,
-                    },
-                    channels={"audit", "voice", "ui", "mobile", "telegram"},
-                ))
-            except Exception as e:
-                print(f"[IntruderAlert] Bridge dispatch error: {e}")
-                self._log(f"SYS: ⚠️ Bridge dispatch error: {e}")
-        else:
-            # Fallback path if no bridge is configured
-            # 1. Local Hash-Chained Audit Record
-            try:
-                if self._audit:
-                    ev_name = event_type or ("duress_logon_success" if (custom_msg and "DURESS" in custom_msg) else "failed_logon")
-                    self._audit.log_event(
-                        event_type=ev_name,
-                        actor=actor or "system",
-                        details=details or {"message": text, "record_id": record_id, "time": time_str},
-                    )
-            except Exception as e:
-                print(f"[IntruderAlert] Audit log write error: {e}")
-                self._log(f"SYS: ⚠️ Audit write error: {e}")
+        # ── Route through Unified Security Alert Pipeline ───────────────────
+        try:
+            from core.unified_security_alert import dispatch_security_alert
+            ev_name = event_type or ("duress_logon_success" if (custom_msg and "DURESS" in custom_msg) else "windows_lockscreen_failure")
+            alert_details = details or {"message": text, "record_id": record_id, "time": time_str}
+            if record_id is not None:
+                alert_details["record_id"] = record_id
 
-            # 2. Telegram — hacker-themed message
-            try:
-                if self._telegram and self._telegram.configured:
-                    def _tg_worker():
-                        try:
-                            self._telegram.send_alert(text, jpeg_bytes, hostname=self._hostname, time_str=time_str)
-                        except Exception as e:
-                            print(f"[IntruderAlert] Telegram background delivery error: {e}")
-                    threading.Thread(target=_tg_worker, daemon=True).start()
-                else:
-                    rec_info = f" for RecordId={record_id}" if record_id is not None else f" (time: {time_str})"
-                    warn_msg = f"[IntruderAlert] ⚠️ Telegram not configured — alert NOT sent via Telegram{rec_info}"
-                    print(warn_msg)
-                    self._log(f"SYS: {warn_msg}")
-            except Exception as e:
-                print(f"[IntruderAlert] Telegram dispatch error: {e}")
-                self._log(f"SYS: ⚠️ Telegram dispatch error: {e}")
-
-            # 3. MobileServer WebSocket + FCM
-            try:
-                self._on_alert(text, jpeg_bytes)
-            except Exception as e:
-                print(f"[IntruderAlert] on_alert callback error: {e}")
-                self._log(f"SYS: ⚠️ IntruderAlert on_alert callback error: {e}")
+            dispatch_security_alert(
+                trigger_type=ev_name,
+                actor=actor or "system",
+                details=alert_details,
+                snapshot_bytes=jpeg_bytes,
+                bridge=self._bridge,
+                custom_msg=text,
+                face_note=face_note,
+                on_alert_cb=self._on_alert,
+                log_fn=self._log,
+            )
+        except Exception as e:
+            print(f"[IntruderAlert] Unified alert dispatch error: {e}")
+            self._log(f"SYS: ⚠️ Unified alert dispatch error: {e}")
 
         # 4. Asynchronous Video Clip Capture (follows up fast still alert without delaying it)
         def _clip_worker():

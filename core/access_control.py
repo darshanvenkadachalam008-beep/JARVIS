@@ -87,7 +87,7 @@ class AccessControl:
     while delegating all identity persistence, locking, and hashing to sentinel/auth.
     """
 
-    def __init__(self, path: Optional[Path] = None, audit_log_path: Optional[Path] = None):
+    def __init__(self, path: Optional[Path] = None, audit_log_path: Optional[Path] = None, bridge: Optional[Any] = None):
         if path is not None:
             self.legacy_path = Path(path)
             self.auth_dir = self.legacy_path.parent / "auth"
@@ -102,10 +102,14 @@ class AccessControl:
 
         self._audit = AuditLog(path=audit_log_path or default_audit)
         self._engine = AuthEngine(auth_dir=self.auth_dir)
+        self._bridge = bridge
 
         # One-time lazy migration of legacy memory/access_control.json if uninitialized
         if not self._engine.is_initialized() and self.legacy_path.exists():
             self._try_migrate_legacy()
+
+    def set_bridge(self, bridge: Optional[Any]) -> None:
+        self._bridge = bridge
 
     @property
     def path(self) -> Path:
@@ -428,11 +432,22 @@ class AccessControl:
                 "auth_triage",
                 {"action": action, "result": "escalated_lockout", "fail_count": fail_count, "backoff_s": backoff},
             )
-            if alert_callback:
-                try:
-                    alert_callback(f"🚨 Repeated authentication failures ({fail_count} attempts) — session locked.", snapshot_bytes)
-                except Exception:
-                    pass
+            try:
+                from core.unified_security_alert import dispatch_security_alert
+                dispatch_security_alert(
+                    trigger_type="jarvis_pin_failure",
+                    actor="user",
+                    details={"action": action, "fail_count": fail_count, "backoff_s": backoff, "result": "escalated_lockout"},
+                    snapshot_bytes=snapshot_bytes,
+                    bridge=getattr(self, "_bridge", None),
+                    on_alert_cb=alert_callback,
+                )
+            except Exception:
+                if alert_callback:
+                    try:
+                        alert_callback(f"🚨 Repeated authentication failures ({fail_count} attempts) — session locked.", snapshot_bytes)
+                    except Exception:
+                        pass
             return TriageResult(
                 status=TriageStatus.LOCKED_OUT,
                 decision="escalated_lockout",
@@ -502,12 +517,30 @@ class AccessControl:
             },
         )
 
-        if alert_callback:
-            try:
-                alert_text = f"⚠️ Intruder Alert: Failed authentication on action '{action}' ({face_reason})"
-                alert_callback(alert_text, snapshot_bytes)
-            except Exception:
-                pass
+        try:
+            from core.unified_security_alert import dispatch_security_alert
+            dispatch_security_alert(
+                trigger_type="jarvis_pin_failure",
+                actor="user",
+                details={
+                    "action": action,
+                    "fail_count": fail_count,
+                    "face_reason": face_reason,
+                    "backoff_s": backoff,
+                    "result": "intruder_suspected",
+                },
+                snapshot_bytes=snapshot_bytes,
+                bridge=getattr(self, "_bridge", None),
+                custom_msg=f"⚠️ Intruder Alert: Failed authentication on action '{action}' ({face_reason})",
+                on_alert_cb=alert_callback,
+            )
+        except Exception:
+            if alert_callback:
+                try:
+                    alert_text = f"⚠️ Intruder Alert: Failed authentication on action '{action}' ({face_reason})"
+                    alert_callback(alert_text, snapshot_bytes)
+                except Exception:
+                    pass
 
         return TriageResult(
             status=TriageStatus.INTRUDER_SUSPECTED,

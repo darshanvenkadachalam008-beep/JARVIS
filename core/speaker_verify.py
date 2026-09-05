@@ -91,12 +91,37 @@ class SpeakerVerifier:
     cost just because this module exists in the codebase.
     """
 
-    def __init__(self, path: Optional[Path] = None, threshold: Optional[float] = None):
+    def __init__(self, path: Optional[Path] = None, threshold: Optional[float] = None, bridge: Optional[Any] = None):
         self.path = path or (_base_dir() / "memory" / "voice_profile.json")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._explicit_threshold = threshold
         self._audit = AuditLog()
         self._encoder = None  # lazy-loaded resemblyzer.VoiceEncoder
+        self._bridge = bridge
+
+    def set_bridge(self, bridge: Optional[Any]) -> None:
+        self._bridge = bridge
+
+    def trigger_voice_auth_alert(
+        self,
+        action: str = "voice_auth",
+        score: Optional[float] = None,
+        snapshot_bytes: Optional[bytes] = None,
+        bridge: Optional[Any] = None,
+    ) -> dict:
+        """Dispatches a unified security alert for voice verification failure."""
+        try:
+            from core.unified_security_alert import dispatch_security_alert
+            return dispatch_security_alert(
+                trigger_type="jarvis_voice_auth_failure",
+                actor="user",
+                details={"action": action, "score": score, "threshold": self.threshold},
+                snapshot_bytes=snapshot_bytes,
+                bridge=bridge or getattr(self, "_bridge", None),
+            )
+        except Exception as e:
+            print(f"[SpeakerVerify] Voice auth alert dispatch error: {e}")
+            return {}
 
     @property
     def threshold(self) -> float:
