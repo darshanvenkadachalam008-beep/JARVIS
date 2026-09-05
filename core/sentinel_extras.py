@@ -630,7 +630,7 @@ class EmergencyWipeController:
                 self._pending_channel = None
                 return False, "⏱ No pending wipe request (or request expired). Initiate wipe request first.", []
 
-        ac = AccessControl()
+        ac = AccessControl(bridge=self._bridge)
         if not ac.is_configured():
             return False, "❌ No security PIN configured yet (core/access_control.py) — wipe refused for safety. Run setup_security.py first.", []
 

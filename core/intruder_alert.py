@@ -618,6 +618,7 @@ class IntruderAlertWatcher:
                 face_note=face_note,
                 on_alert_cb=self._on_alert,
                 log_fn=self._log,
+                audit_logger=self._audit,
             )
         except Exception as e:
             print(f"[IntruderAlert] Unified alert dispatch error: {e}")

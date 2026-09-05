@@ -291,6 +291,22 @@ class AccessControl:
             return max(0.0, state.primary_locked_until - now)
         return 0.0
 
+    def _dispatch_pin_failure_alert(self, action: str, result: str, details: Optional[dict] = None) -> None:
+        """Dispatches a unified security alert for PIN authentication failures or lockouts."""
+        try:
+            from core.unified_security_alert import dispatch_security_alert
+            alert_details = {"action": action, "result": result}
+            if details:
+                alert_details.update(details)
+            dispatch_security_alert(
+                trigger_type="jarvis_pin_failure",
+                actor="user",
+                details=alert_details,
+                bridge=getattr(self, "_bridge", None),
+            )
+        except Exception as _e:
+            logger.debug("Failed to dispatch pin failure alert: %s", _e)
+
     def verify_pin(self, pin: str, action: str = "unspecified") -> bool:
         """Standard PIN check with audit trail and atomic lockout ladder."""
         if not self.is_configured():
@@ -303,6 +319,7 @@ class AccessControl:
                 "access_control_check",
                 {"action": action, "result": "denied_locked_out", "retry_in_s": round(locked_for, 1)},
             )
+            self._dispatch_pin_failure_alert(action, "denied_locked_out", {"retry_in_s": round(locked_for, 1)})
             return False
 
         try:
@@ -317,21 +334,25 @@ class AccessControl:
                     "access_control_check",
                     {"action": action, "result": "denied_wrong_pin", "fail_count": state.primary_failures, "backoff_s": backoff},
                 )
+                self._dispatch_pin_failure_alert(action, "denied_wrong_pin", {"fail_count": state.primary_failures, "backoff_s": backoff})
                 return False
         except HardLockoutError:
             self._audit.append("access_control_check", {"action": action, "result": "denied_hard_lockout"})
+            self._dispatch_pin_failure_alert(action, "denied_hard_lockout")
             return False
         except TemporaryLockoutError as e:
             self._audit.append(
                 "access_control_check",
                 {"action": action, "result": "denied_locked_out", "retry_in_s": round(e.remaining_seconds, 1)},
             )
+            self._dispatch_pin_failure_alert(action, "denied_locked_out", {"retry_in_s": round(e.remaining_seconds, 1)})
             return False
         except LockAcquisitionError:
             self._audit.append("access_control_check", {"action": action, "result": "denied_lock_timeout"})
             return False
         except (UnauthorizedError, LockoutException):
             self._audit.append("access_control_check", {"action": action, "result": "denied_unauthorized"})
+            self._dispatch_pin_failure_alert(action, "denied_unauthorized")
             return False
 
     def verify_recovery_pin(self, pin: str, action: str = "unspecified", allow_during_backoff: bool = True) -> bool:
@@ -352,18 +373,21 @@ class AccessControl:
                     "access_control_recovery_check",
                     {"action": action, "result": "denied_wrong_recovery_pin", "fail_count": state.recovery_failures, "backoff_s": backoff},
                 )
+                self._dispatch_pin_failure_alert(action, "denied_wrong_recovery_pin", {"fail_count": state.recovery_failures, "backoff_s": backoff})
                 return False
         except TemporaryLockoutError as e:
             self._audit.append(
                 "access_control_recovery_check",
                 {"action": action, "result": "denied_locked_out", "retry_in_s": round(e.remaining_seconds, 1)},
             )
+            self._dispatch_pin_failure_alert(action, "denied_locked_out", {"retry_in_s": round(e.remaining_seconds, 1)})
             return False
         except LockAcquisitionError:
             self._audit.append("access_control_recovery_check", {"action": action, "result": "denied_lock_timeout"})
             return False
         except (UnauthorizedError, LockoutException):
             self._audit.append("access_control_recovery_check", {"action": action, "result": "denied_unauthorized"})
+            self._dispatch_pin_failure_alert(action, "denied_unauthorized")
             return False
 
     def triage_authentication(

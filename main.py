@@ -1689,7 +1689,7 @@ class JarvisLive:
         try:
             from sentinel.audit import AuditLogger
             _audit = AuditLogger()
-            self._proactive_bridge.set_audit_sink(lambda cat, actor, details: _audit.log_event(cat, actor, details))
+            self._proactive_bridge.set_audit_sink(lambda cat, actor, details: _audit.log_event(event_type=cat, actor=actor, details=details))
         except Exception as _ae:
             print(f"[ProactiveBridge] Audit sink initialization skipped: {_ae}")
 
@@ -1772,6 +1772,18 @@ class JarvisLive:
             print(f"[Mobile] Initialization skipped: {_me}")
             self._mobile = None
 
+        # ── Phase 7: Failed-login & Lockscreen Intruder Watcher ──────────────
+        from core.intruder_alert import IntruderAlertWatcher
+        self._intruder_alert = IntruderAlertWatcher(
+            on_alert=lambda msg, snap: self._mobile.notify(msg) if getattr(self, "_mobile", None) else None,
+            log_fn=self.ui.write_log if self.ui else None,
+            bridge=self._proactive_bridge,
+        )
+
+        # ── Speaker Verification Layer ──────────────────────────────────────
+        from core.speaker_verify import SpeakerVerifier
+        self._speaker_verifier = SpeakerVerifier(bridge=self._proactive_bridge)
+
     # ── Activity tracking ────────────────────────────────────────────────────
 
     # ── State machine callback ─────────────────────────────────────────────────────
@@ -1805,6 +1817,22 @@ class JarvisLive:
         self._last_activity = time.time()
         self._state_manager.wake()   # SLEEPING → LISTENING
         self.ui.write_log("SYS: Wake word detected — JARVIS activated")
+
+        # Speaker Identity Verification on Wake
+        if hasattr(self, "_speaker_verifier") and self._speaker_verifier.is_enrolled():
+            try:
+                audio = self._wake_detector.get_last_utterance_audio()
+                if audio is not None:
+                    v_res = self._speaker_verifier.verify(audio, sample_rate=16000, action="wake_word")
+                    if v_res.enrolled and not v_res.accepted:
+                        self.ui.write_log(f"SYS: ⚠️ Unenrolled voice wake attempt (similarity: {v_res.score:.2f})")
+                        self._speaker_verifier.trigger_voice_auth_alert(
+                            action="wake_word_unenrolled_voice",
+                            score=v_res.score,
+                            bridge=self._proactive_bridge,
+                        )
+            except Exception as _sve:
+                print(f"[Main] Speaker verification on wake failed: {_sve}")
 
         # Phase 4: offer morning briefing right after wake word
         self._proactive.on_wake_word()
@@ -3165,6 +3193,11 @@ class JarvisLive:
             print(f"[Calendar] Reminder skipped: {_ce}")
 
         self._proactive.start()   # Phase 4: proactive intelligence
+        if getattr(self, "_intruder_alert", None):
+            try:
+                self._intruder_alert.start()
+            except Exception as _iae:
+                print(f"[IntruderAlert] Watcher start failed: {_iae}")
         if getattr(self, "_mobile", None):
             try:
                 self._mobile.start()   # Phase 7: mobile companion server

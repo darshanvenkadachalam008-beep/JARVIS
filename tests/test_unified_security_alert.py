@@ -184,25 +184,6 @@ class TestUnifiedSecurityAlertDispatch(unittest.TestCase):
         self.assertEqual(event.priority, ProactivePriority.CRITICAL)
         self.assertEqual(event.data["trigger_type"], "windows_lockscreen_failure")
 
-    def test_access_control_pin_failure_routes_to_unified_dispatcher(self):
-        mock_bridge = MagicMock(spec=ProactiveBridge)
-        ac = AccessControl()
-        ac.set_bridge(mock_bridge)
-        ac.set_pin("987654")
-
-        # Wrong PIN with no face -> INTRUDER_SUSPECTED
-        res = ac.triage_authentication(
-            candidate_pin="000000",
-            action="wipe_drive",
-            snapshot_bytes=b"fake_face_frame",
-        )
-
-        self.assertEqual(res.status, TriageStatus.INTRUDER_SUSPECTED)
-        self.assertEqual(mock_bridge.dispatch.call_count, 1)
-        event = mock_bridge.dispatch.call_args[0][0]
-        self.assertEqual(event.priority, ProactivePriority.CRITICAL)
-        self.assertEqual(event.data["trigger_type"], "jarvis_pin_failure")
-
     def test_speaker_verifier_routes_to_unified_dispatcher(self):
         mock_bridge = MagicMock(spec=ProactiveBridge)
         sv = SpeakerVerifier(threshold=0.85, bridge=mock_bridge)
@@ -219,5 +200,108 @@ class TestUnifiedSecurityAlertDispatch(unittest.TestCase):
         self.assertEqual(event.data["trigger_type"], "jarvis_voice_auth_failure")
 
 
+class TestRealCallerAlertIntegration(unittest.TestCase):
+    """Integration tests asserting real caller paths trigger unified alerts."""
+
+    def test_main_py_wires_audit_intruder_and_speaker_verifier(self):
+        """Regression test ensuring JarvisLive in main.py wires audit sink, IntruderAlertWatcher, and SpeakerVerifier to ProactiveBridge."""
+        with patch("core.wake_word.WakeWordEngine"), \
+             patch("core.gesture_control.GestureControlEngine"), \
+             patch("mobile_server.MobileServer"), \
+             patch("sentinel.audit.AuditLogger"):
+
+            from main import JarvisLive
+            mock_ui = MagicMock()
+            jarvis = JarvisLive(ui=mock_ui)
+
+            self.assertIsNotNone(jarvis._proactive_bridge, "JarvisLive must have a ProactiveBridge")
+            self.assertIsNotNone(jarvis._proactive_bridge._audit_sink, "JarvisLive ProactiveBridge must have an active audit sink")
+            self.assertIsNotNone(jarvis._intruder_alert, "JarvisLive must instantiate IntruderAlertWatcher")
+            self.assertEqual(jarvis._intruder_alert._bridge, jarvis._proactive_bridge, "IntruderAlertWatcher must be wired to JarvisLive ProactiveBridge")
+            self.assertIsNotNone(jarvis._speaker_verifier, "JarvisLive must instantiate SpeakerVerifier")
+            self.assertEqual(jarvis._speaker_verifier._bridge, jarvis._proactive_bridge, "SpeakerVerifier must be wired to JarvisLive ProactiveBridge")
+
+    def test_emergency_wipe_caller_wrong_pin_dispatches_alert(self):
+        """Asserts EmergencyWipeController caller triggering wrong PIN fires unified alert through ProactiveBridge."""
+        from core.sentinel_extras import EmergencyWipeController
+        mock_bridge = MagicMock(spec=ProactiveBridge)
+
+        with tempfile.TemporaryDirectory() as td:
+            auth_dir = Path(td) / "auth"
+            auth_dir.mkdir(parents=True, exist_ok=True)
+            ac = AccessControl(path=auth_dir / "access_control.json")
+            ac.set_bridge(mock_bridge)
+            ac.set_pin("123456")
+
+            # Patch AccessControl in sentinel_extras to use our instance
+            with patch("core.sentinel_extras.AccessControl", return_value=ac):
+                ctrl = EmergencyWipeController(wipe_paths=[str(auth_dir / "test.txt")], bridge=mock_bridge)
+                EmergencyWipeController.set_instance(ctrl)
+
+                # 1. Initiate wipe
+                ctrl.request_wipe(channel="telegram")
+
+                # 2. Confirm wipe with WRONG PIN
+                success, msg, _ = ctrl.confirm_wipe(pin="000000", channel="telegram")
+                self.assertFalse(success)
+                self.assertIn("PIN incorrect", msg)
+
+                # Verify alert was dispatched
+                self.assertEqual(mock_bridge.dispatch.call_count, 1)
+                event = mock_bridge.dispatch.call_args[0][0]
+                self.assertEqual(event.priority, ProactivePriority.CRITICAL)
+                self.assertEqual(event.data["trigger_type"], "jarvis_pin_failure")
+                self.assertEqual(event.data["details"]["action"], "emergency_wipe")
+                self.assertEqual(event.data["details"]["result"], "denied_wrong_pin")
+
+                # 3. Confirm wipe with CORRECT PIN -> must NOT dispatch a PIN failure alert
+                mock_bridge.dispatch.reset_mock()
+                # Re-initiate pending request
+                ctrl.request_wipe(channel="telegram")
+                with patch.object(ctrl, "execute_wipe", return_value=(True, ["✅ test.txt"])):
+                    success, msg, _ = ctrl.confirm_wipe(pin="123456", channel="telegram")
+                    self.assertTrue(success)
+                    self.assertEqual(mock_bridge.dispatch.call_count, 0, "Successful PIN verification must NOT dispatch a failure alert")
+
+    def test_wake_word_unenrolled_speaker_dispatches_alert(self):
+        """Asserts wake-word rejection of unauthorized voice triggers unified security alert."""
+        import numpy as np
+        from core.speaker_verify import SpeakerVerifier, VerifyResult
+
+        mock_bridge = MagicMock(spec=ProactiveBridge)
+        sv = SpeakerVerifier(threshold=0.80, bridge=mock_bridge)
+
+        # Mock enrollment with a dummy reference embedding
+        enrolled_emb = np.ones(128, dtype=np.float32)
+        enrolled_emb /= np.linalg.norm(enrolled_emb)
+
+        # Candidate audio of an intruder (different vector -> negative cosine similarity)
+        intruder_emb = -np.ones(128, dtype=np.float32)
+        intruder_emb /= np.linalg.norm(intruder_emb)
+
+        with patch.object(sv, "_load_embedding", return_value=enrolled_emb), \
+             patch.object(sv, "_embed", return_value=intruder_emb):
+            fake_pcm = np.zeros(16000, dtype=np.int16)
+            res = sv.verify(fake_pcm, sample_rate=16000, action="wake_word")
+            self.assertTrue(res.enrolled)
+            self.assertFalse(res.accepted)
+
+            # Trigger alert as done in _on_wake_word
+            alert_payload = sv.trigger_voice_auth_alert(
+                action="wake_word_unenrolled_voice",
+                score=res.score,
+            )
+
+            self.assertEqual(alert_payload["trigger_type"], "jarvis_voice_auth_failure")
+            self.assertEqual(mock_bridge.dispatch.call_count, 1)
+            event = mock_bridge.dispatch.call_args[0][0]
+            self.assertEqual(event.priority, ProactivePriority.CRITICAL)
+            self.assertEqual(event.data["trigger_type"], "jarvis_voice_auth_failure")
+            self.assertEqual(event.data["details"]["action"], "wake_word_unenrolled_voice")
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+

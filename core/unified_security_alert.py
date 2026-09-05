@@ -49,6 +49,7 @@ def dispatch_security_alert(
     face_note: Optional[str] = None,
     on_alert_cb: Optional[Callable[[str, Optional[bytes]], None]] = None,
     log_fn: Optional[Callable[[str], None]] = None,
+    audit_logger: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Unified entrypoint for all security intrusion and authentication failure alerts.
@@ -154,10 +155,14 @@ def dispatch_security_alert(
     else:
         # Fallback if no bridge is provided
         try:
-            from sentinel.audit import AuditLogger
-            _audit = AuditLogger()
-            _audit.log_event("security", actor, merged_details)
-        except Exception:
+            if audit_logger is not None:
+                audit_logger.log_event(event_type=trigger_type, actor=actor, details=merged_details)
+            else:
+                from sentinel.audit import AuditLogger
+                _audit = AuditLogger()
+                _audit.log_event(event_type=trigger_type, actor=actor, details=merged_details)
+        except Exception as e:
+            logger.warning("Audit logging fallback failed: %s", e)
             try:
                 from core.audit_log import AuditLog
                 AuditLog().append(f"alert:{trigger_type}", merged_details)

@@ -1518,7 +1518,7 @@ class JarvisTrayApp:
         try:
             from sentinel.audit import AuditLogger
             _audit = AuditLogger()
-            self._proactive_bridge.set_audit_sink(lambda cat, actor, details: _audit.log_event(cat, actor, details))
+            self._proactive_bridge.set_audit_sink(lambda cat, actor, details: _audit.log_event(event_type=cat, actor=actor, details=details))
         except Exception:
             pass
         try:
@@ -1552,6 +1552,13 @@ class JarvisTrayApp:
             bridge   = self._proactive_bridge,
         )
         self._intruder_alert.start()
+
+        # Speaker Verification Layer
+        try:
+            from core.speaker_verify import SpeakerVerifier
+            self._speaker_verifier = SpeakerVerifier(bridge=self._proactive_bridge)
+        except Exception:
+            self._speaker_verifier = None
 
         print("[Tray] JARVIS tray service running")
 
@@ -1910,6 +1917,24 @@ class JarvisTrayApp:
         if self._ui:
             self._ui.set_state("LISTENING")
             self._ui.write_log("SYS: Wake word detected — JARVIS activated")
+
+        # Speaker Identity Verification on Wake
+        if getattr(self, "_speaker_verifier", None) and self._speaker_verifier.is_enrolled():
+            try:
+                audio = self._wake_listener.get_last_utterance_audio() if hasattr(self, "_wake_listener") else None
+                if audio is not None:
+                    v_res = self._speaker_verifier.verify(audio, sample_rate=16000, action="wake_word")
+                    if v_res.enrolled and not v_res.accepted:
+                        if self._ui:
+                            self._ui.write_log(f"SYS: ⚠️ Unenrolled voice wake attempt (similarity: {v_res.score:.2f})")
+                        self._speaker_verifier.trigger_voice_auth_alert(
+                            action="wake_word_unenrolled_voice",
+                            score=v_res.score,
+                            bridge=self._proactive_bridge,
+                        )
+            except Exception as _sve:
+                print(f"[Tray] Speaker verification on wake failed: {_sve}")
+
         self._tray.showMessage(
             "JARVIS Activated",
             "Listening...",
