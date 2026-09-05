@@ -417,10 +417,11 @@ class HologramCanvas(QWidget):
         self._blink_tick = 0
         self._rot        = 0.0
 
-        # HUD Reticle and Chrome state
+        # HUD Reticle, Radar & Chrome state
         self._reticle_rot_outer = 0.0
         self._reticle_rot_inner = 0.0
-        self._frame_tick = 0
+        self._sweep_angle       = 0.0
+        self._frame_tick        = 0
 
         # Real voice-amplitude reactivity (0.0 - 1.0 RMS from mic / playback PCM stream)
         self._audio_level     = 0.0
@@ -468,6 +469,13 @@ class HologramCanvas(QWidget):
                 self._trigger_glitch()
         self._state    = state
         self._speaking = (state == "SPEAKING")
+        self._update_timer_rate()
+
+    def _update_timer_rate(self):
+        """Dynamic timer throttling: 16ms (60 FPS) when active, 50ms (20 FPS) when sleeping/offline."""
+        target_interval = 50 if self._state in ("SLEEPING", "OFFLINE") else 16
+        if self._tmr.interval() != target_interval:
+            self._tmr.setInterval(target_interval)
 
     def _trigger_glitch(self):
         self._glitch_until = time.time() + 0.15
@@ -527,6 +535,7 @@ class HologramCanvas(QWidget):
 
         self._reticle_rot_outer = (self._reticle_rot_outer + (0.8 * audio_boost if self._speaking else 0.3)) % 360.0
         self._reticle_rot_inner = (self._reticle_rot_inner - (1.2 * audio_boost if self._speaking else 0.5)) % 360.0
+        self._sweep_angle       = (self._sweep_angle + (3.0 * audio_boost if self._speaking else 1.5)) % 360.0
 
         rot_spd = theme.get("speed", 0.02)
         self._rot = (self._rot + rot_spd) % (2 * math.pi)
@@ -549,6 +558,44 @@ class HologramCanvas(QWidget):
             if pt["y"] < -0.05 or pt["x"] < -0.05 or pt["x"] > 1.05:
                 pt.update(self._new_particle())
                 pt["y"] = 1.05
+
+    def _draw_radar_sweep(self, p: "QPainter", cx: float, cy: float, fw: float, primary_col: str, dim: float):
+        r_sweep = fw * 0.47
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        for k in range(10):
+            a_trail = (self._sweep_angle - k * 3.5) % 360.0
+            alpha = int((28 * ((10 - k) / 10.0)) * dim)
+            if alpha <= 0:
+                continue
+            rad = math.radians(a_trail)
+            p.setPen(QPen(qcol(primary_col, alpha), 1.2))
+            p.drawLine(QPointF(cx, cy), QPointF(cx + r_sweep * math.cos(rad), cy + r_sweep * math.sin(rad)))
+
+        lead_rad = math.radians(self._sweep_angle)
+        p.setPen(QPen(qcol(primary_col, int(95 * dim)), 1.4))
+        p.drawLine(QPointF(cx, cy), QPointF(cx + r_sweep * math.cos(lead_rad), cy + r_sweep * math.sin(lead_rad)))
+
+    def _draw_audio_spectrum(self, p: "QPainter", cx: float, cy: float, fw: float, primary_col: str, secondary_col: str, dim: float, audio_fresh: bool, audio_boost: float):
+        r_base = fw * 0.31
+        num_bars = 36
+        p.setBrush(Qt.BrushStyle.NoBrush)
+
+        for i in range(num_bars):
+            deg = (i * (360.0 / num_bars) + self._arc_spin * 0.15) % 360.0
+            rad = math.radians(deg)
+            ca, sa = math.cos(rad), math.sin(rad)
+
+            harmonic = 0.5 + 0.5 * math.sin(i * 0.8 + self._tick * 0.12)
+            bar_len = (1.5 + 14.0 * audio_boost * harmonic) if audio_fresh else (1.5 + 2.0 * harmonic)
+
+            alpha_bar = int((50 + 180 * (audio_boost if audio_fresh else 0.2)) * dim)
+            p.setPen(QPen(qcol(primary_col, alpha_bar), 1.5))
+            p.drawLine(QPointF(cx + r_base * ca, cy + r_base * sa),
+                       QPointF(cx + (r_base + bar_len) * ca, cy + (r_base + bar_len) * sa))
+
+            if audio_boost > 0.3 and harmonic > 0.7:
+                p.setPen(QPen(qcol(secondary_col, int(220 * dim)), 1.8))
+                p.drawPoint(QPointF(cx + (r_base + bar_len + 2.0) * ca, cy + (r_base + bar_len + 2.0) * sa))
 
     def _draw_hud_reticles(self, p: "QPainter", cx: float, cy: float, fw: float, primary_col: str, secondary_col: str, dim: float, audio_boost: float):
         # 1. Outer calibrated degree ring
@@ -822,6 +869,12 @@ class HologramCanvas(QWidget):
 
         # HUD Targeting Reticles (degree marks, counter-rotating orbital arcs, crosshairs)
         self._draw_hud_reticles(p, cx, cy, fw, primary_col, secondary_col, dim, audio_boost)
+
+        # Radar scanline sweep beam
+        self._draw_radar_sweep(p, cx, cy, fw, primary_col, dim)
+
+        # Circular oscilloscope / audio spectrum radiating around orbital perimeter
+        self._draw_audio_spectrum(p, cx, cy, fw, primary_col, secondary_col, dim, audio_fresh, audio_boost)
 
         # Spinning hologram rings (projection halo)
         ring_specs = [(0.44, 3.0, 90, 65), (0.36, 2.0, 65, 48), (0.28, 1.3, 45, 32)]

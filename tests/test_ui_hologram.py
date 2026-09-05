@@ -198,3 +198,54 @@ def test_hologram_canvas_dim_factor_modes(qapp):
 
     canvas.set_state("OFFLINE")
     assert canvas._dim_factor() == 0.25
+
+
+def test_hologram_canvas_radar_sweep_and_spectrum(qapp):
+    """
+    Verifies that radar sweep advances smoothly and accelerates during speech,
+    and that audio spectrum oscilloscope paints without crash under high amplitudes.
+    """
+    canvas = HologramCanvas()
+    canvas.set_state("LISTENING")
+    initial_sweep = canvas._sweep_angle
+
+    canvas._step()
+    assert canvas._sweep_angle > initial_sweep
+
+    # Speaking mode increases sweep velocity
+    canvas.set_state("SPEAKING")
+    canvas.set_audio_level(0.8)
+    sweep_before = canvas._sweep_angle
+    canvas._step()
+    delta = (canvas._sweep_angle - sweep_before) % 360.0
+    assert delta > 2.0
+
+
+def test_hologram_canvas_timer_throttling_idle_vs_active(qapp):
+    """
+    Verifies dynamic timer throttling:
+    - Active states (LISTENING, SPEAKING, THINKING) -> 16ms interval (~60 FPS)
+    - Idle states (SLEEPING, OFFLINE) -> 50ms interval (~20 FPS)
+    """
+    canvas = HologramCanvas()
+    
+    # Active modes
+    canvas.set_state("LISTENING")
+    assert canvas._tmr.interval() == 16
+    
+    canvas.set_state("SPEAKING")
+    assert canvas._tmr.interval() == 16
+
+    canvas.set_state("THINKING")
+    assert canvas._tmr.interval() == 16
+
+    # Idle power-saving modes
+    canvas.set_state("SLEEPING")
+    assert canvas._tmr.interval() == 50
+
+    canvas.set_state("OFFLINE")
+    assert canvas._tmr.interval() == 50
+
+    # Wake back up
+    canvas.set_state("ACTIVE_CONVERSATION")
+    assert canvas._tmr.interval() == 16

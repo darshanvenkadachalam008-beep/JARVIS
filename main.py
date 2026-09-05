@@ -1298,14 +1298,29 @@ def _speak_via_edge_tts(text: str, ui=None, set_speaking=None) -> None:
             except Exception:
                 pass
 
-            # ── Strategy 2: sounddevice + pydub (fallback only) ───────────────
+            # ── Strategy 2: sounddevice + pydub (chunked real RMS playback) ──
             try:
                 from pydub import AudioSegment
                 seg = AudioSegment.from_file(mp3_buf, format="mp3")
                 pcm = _np.frombuffer(seg.raw_data, dtype=_np.int16)
                 _safe_set_speaking(True)
-                _sd.play(pcm, samplerate=seg.frame_rate)
-                _sd.wait()
+                chunk_samples = max(256, int(seg.frame_rate * 0.05)) # ~50ms chunk
+                channels = seg.channels
+                with _sd.OutputStream(samplerate=seg.frame_rate, channels=channels, dtype=_np.int16) as stream:
+                    step = chunk_samples * channels
+                    for i in range(0, len(pcm), step):
+                        chunk = pcm[i : i + step]
+                        if len(chunk) == 0:
+                            break
+                        samples_f = chunk.astype(_np.float32)
+                        rms = float(_np.sqrt(_np.mean(samples_f * samples_f)))
+                        level = min(1.0, rms / 3000.0)
+                        if ui and hasattr(ui, 'set_audio_level'):
+                            try:
+                                ui.set_audio_level(level)
+                            except Exception:
+                                pass
+                        stream.write(chunk)
                 return
             except Exception as e:
                 if ui:
