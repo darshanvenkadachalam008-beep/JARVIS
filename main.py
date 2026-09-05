@@ -1291,25 +1291,122 @@ def _speak_via_edge_tts(text: str, ui=None, set_speaking=None) -> None:
                 # rather than going silent.
                 mp3_buf = await _synthesize(FALLBACK_VOICE)
 
-            # ── Strategy 1: pygame (no subprocess, no console window) ────────
+            mp3_bytes = mp3_buf.getvalue()
+
+            # ── Strategy 1 (Primary): sounddevice + in-memory PCM decoding ───
+            # Decodes MP3 to raw PCM and streams in 50ms chunks to sounddevice,
+            # computing real-time RMS amplitude for UI audio reactivity on every chunk.
+            pcm_data = None
+            sample_rate = 24000
+            n_channels = 1
+
+            # Decoder 1a: miniaudio (pure in-memory, fast C-decoder, zero subprocess/ffmpeg)
             try:
-                _play_mp3_pygame(mp3_buf)
-                return
+                import miniaudio
+                decoded = miniaudio.decode(mp3_bytes)
+                sample_rate = decoded.sample_rate
+                n_channels = decoded.nchannels
+                pcm_data = _np.array(decoded.samples, dtype=_np.int16).reshape(-1, n_channels)
             except Exception:
                 pass
 
-            # ── Strategy 2: sounddevice + pydub (chunked real RMS playback) ──
+            # Decoder 1b: pydub (if miniaudio unavailable)
+            if pcm_data is None:
+                try:
+                    from pydub import AudioSegment
+                    seg = AudioSegment.from_file(io.BytesIO(mp3_bytes), format="mp3")
+                    sample_rate = seg.frame_rate
+                    n_channels = seg.channels
+                    pcm_data = _np.frombuffer(seg.raw_data, dtype=_np.int16).reshape(-1, n_channels)
+                except Exception:
+                    pass
+
+            # Decoder 1c: pygame sndarray (if miniaudio and pydub unavailable)
+            if pcm_data is None:
+                try:
+                    import pygame
+                    if not pygame.mixer.get_init():
+                        pygame.mixer.init(frequency=24000, size=-16, channels=1, buffer=512)
+                    snd = pygame.mixer.Sound(io.BytesIO(mp3_bytes))
+                    arr = pygame.sndarray.array(snd)
+                    if arr.ndim == 1:
+                        pcm_data = arr.reshape(-1, 1).astype(_np.int16)
+                        n_channels = 1
+                    else:
+                        pcm_data = arr.astype(_np.int16)
+                        n_channels = arr.shape[1]
+                    sample_rate = 24000
+                except Exception:
+                    pass
+
+            # Stream decoded PCM chunks with real-time RMS calculation
+            if pcm_data is not None and len(pcm_data) > 0:
+                try:
+                    _safe_set_speaking(True)
+                    chunk_samples = max(256, int(sample_rate * 0.05)) # ~50ms chunk
+                    with _sd.OutputStream(samplerate=sample_rate, channels=n_channels, dtype=_np.int16) as stream:
+                        for i in range(0, len(pcm_data), chunk_samples):
+                            chunk = pcm_data[i : i + chunk_samples]
+                            if len(chunk) == 0:
+                                break
+                            samples_f = chunk.astype(_np.float32)
+                            rms = float(_np.sqrt(_np.mean(samples_f * samples_f)))
+                            level = min(1.0, rms / 3000.0)
+                            if ui and hasattr(ui, 'set_audio_level'):
+                                try:
+                                    ui.set_audio_level(level)
+                                except Exception:
+                                    pass
+                            stream.write(chunk)
+                    return
+                except Exception as e:
+                    if ui:
+                        ui.write_log(f"SYS: sounddevice streaming failed ({e}), trying pygame fallback")
+                finally:
+                    _safe_set_speaking(False)
+
+            # ── Strategy 2 (Fallback): pygame mixer ──────────────────────────
             try:
-                from pydub import AudioSegment
-                seg = AudioSegment.from_file(mp3_buf, format="mp3")
-                pcm = _np.frombuffer(seg.raw_data, dtype=_np.int16)
+                _play_mp3_pygame(mp3_buf)
+                return
+            except Exception as e:
+                if ui:
+                    ui.write_log(f"SYS: pygame playback failed ({e})")
+
+        _aio.run(_run())
+
+    except ImportError:
+        # edge-tts not installed — fall back to pyttsx3 with chunked WAV RMS
+        try:
+            import pyttsx3
+            import wave
+            import sounddevice as _sd
+            import numpy as _np
+            engine = pyttsx3.init()
+            engine.setProperty("rate", 170)
+            for v in engine.getProperty("voices"):
+                if "david" in v.name.lower() or "mark" in v.name.lower() or "ryan" in v.name.lower():
+                    engine.setProperty("voice", v.id)
+                    break
+
+            tmp_wav = None
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+                    tmp_wav = f.name
+                engine.save_to_file(text, tmp_wav)
+                engine.runAndWait()
+
+                with wave.open(tmp_wav, 'rb') as wf:
+                    nc = wf.getnchannels()
+                    sr = wf.getframerate()
+                    frames = wf.readframes(wf.getnframes())
+                    pcm = _np.frombuffer(frames, dtype=_np.int16).reshape(-1, nc)
+
                 _safe_set_speaking(True)
-                chunk_samples = max(256, int(seg.frame_rate * 0.05)) # ~50ms chunk
-                channels = seg.channels
-                with _sd.OutputStream(samplerate=seg.frame_rate, channels=channels, dtype=_np.int16) as stream:
-                    step = chunk_samples * channels
-                    for i in range(0, len(pcm), step):
-                        chunk = pcm[i : i + step]
+                chunk_samples = max(256, int(sr * 0.05))
+                with _sd.OutputStream(samplerate=sr, channels=nc, dtype=_np.int16) as stream:
+                    for i in range(0, len(pcm), chunk_samples):
+                        chunk = pcm[i : i + chunk_samples]
                         if len(chunk) == 0:
                             break
                         samples_f = chunk.astype(_np.float32)
@@ -1321,31 +1418,21 @@ def _speak_via_edge_tts(text: str, ui=None, set_speaking=None) -> None:
                             except Exception:
                                 pass
                         stream.write(chunk)
-                return
-            except Exception as e:
-                if ui:
-                    ui.write_log(f"SYS: pydub/ffmpeg playback failed — {e}")
+            except Exception:
+                # Ultimate fail-safe if sounddevice/wave fails
+                _safe_set_speaking(True)
+                engine.say(text)
+                engine.runAndWait()
             finally:
                 _safe_set_speaking(False)
-
-        _aio.run(_run())
-
-    except ImportError:
-        # edge-tts not installed — fall back to pyttsx3 (no audio file at all)
-        try:
-            import pyttsx3
-            engine = pyttsx3.init()
-            engine.setProperty("rate", 170)
-            for v in engine.getProperty("voices"):
-                if "david" in v.name.lower() or "mark" in v.name.lower() or "ryan" in v.name.lower():
-                    engine.setProperty("voice", v.id)
-                    break
-            _safe_set_speaking(True)
-            engine.say(text)
-            engine.runAndWait()
+                if tmp_wav and os.path.exists(tmp_wav):
+                    try:
+                        os.unlink(tmp_wav)
+                    except Exception:
+                        pass
         except Exception as e:
             if ui:
-                ui.write_log(f"SYS: edge-tts not installed. pip install edge-tts  ({e})")
+                ui.write_log(f"SYS: pyttsx3 error — {e}")
         finally:
             _safe_set_speaking(False)
     except Exception as e:

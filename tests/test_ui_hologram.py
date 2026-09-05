@@ -249,3 +249,47 @@ def test_hologram_canvas_timer_throttling_idle_vs_active(qapp):
     # Wake back up
     canvas.set_state("ACTIVE_CONVERSATION")
     assert canvas._tmr.interval() == 16
+
+
+def test_speak_via_edge_tts_streams_real_pcm_rms(monkeypatch):
+    """
+    Verifies that _speak_via_edge_tts executes the primary PCM streaming path,
+    emitting real non-zero, varying RMS amplitude values to ui.set_audio_level.
+    """
+    import main
+
+    captured_levels = []
+
+    class MockUI:
+        def set_audio_level(self, level):
+            captured_levels.append(level)
+        def write_log(self, msg):
+            pass
+        def set_speaking(self, val):
+            pass
+
+    mock_ui = MockUI()
+
+    # Intercept OutputStream to verify chunk streaming in headless/CI environments
+    streamed_chunks = []
+
+    class MockOutputStream:
+        def __init__(self, samplerate, channels, dtype):
+            self.samplerate = samplerate
+            self.channels = channels
+            self.dtype = dtype
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def write(self, chunk):
+            streamed_chunks.append(chunk)
+
+    monkeypatch.setattr(main.sd, "OutputStream", MockOutputStream)
+
+    main._speak_via_edge_tts("System diagnostics complete. All defenses nominal.", ui=mock_ui)
+
+    assert len(captured_levels) > 0, "Expected non-zero set_audio_level calls during TTS playback"
+    assert any(lvl > 0.05 for lvl in captured_levels), "Expected real non-zero voice amplitude"
+    assert len(set(captured_levels)) > 1, "Expected varying voice amplitude levels across speech chunks"
+    assert len(streamed_chunks) > 0, "Expected PCM audio chunks to be streamed through sounddevice.OutputStream"
