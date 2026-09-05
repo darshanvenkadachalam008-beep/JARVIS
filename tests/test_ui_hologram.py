@@ -9,6 +9,7 @@ from ui import (
     QApplication,
     QPixmap,
     QPainter,
+    Qt,
 )
 
 
@@ -134,3 +135,66 @@ def test_hologram_canvas_headless_qpixmap_rendering(qapp):
             canvas.set_audio_level(audio)
             canvas._step()
             canvas.paintEvent(None)
+
+
+def test_hologram_canvas_reticle_and_tick_progression(qapp):
+    """
+    Verifies that _step() advances frame tick and rotates HUD reticles,
+    with higher angular velocity when speaking or audio is active.
+    """
+    canvas = HologramCanvas()
+    canvas.set_state("LISTENING")
+    initial_tick = canvas._frame_tick
+    initial_outer = canvas._reticle_rot_outer
+    initial_inner = canvas._reticle_rot_inner
+
+    canvas._step()
+    assert canvas._frame_tick == (initial_tick + 1)
+    assert canvas._reticle_rot_outer > initial_outer
+    assert canvas._reticle_rot_inner < initial_inner or canvas._reticle_rot_inner > 350.0
+
+    # Speaking with audio boost should increase rotation rate
+    canvas.set_state("SPEAKING")
+    canvas.set_audio_level(0.9)
+    rot_before = canvas._reticle_rot_outer
+    canvas._step()
+    delta_speaking = (canvas._reticle_rot_outer - rot_before) % 360.0
+    assert delta_speaking > 0.5
+
+
+def test_hologram_canvas_multi_resolution_hud_telemetry_render(qapp):
+    """
+    Verifies offscreen painting across varied screen aspect ratios and resolutions
+    (square, widescreen, compact) verifying stable paint execution.
+    """
+    canvas = HologramCanvas()
+    resolutions = [(400, 400), (800, 600), (1280, 720), (320, 240)]
+
+    for w, h in resolutions:
+        canvas.resize(w, h)
+        pix = QPixmap(w, h)
+        pix.fill(Qt.GlobalColor.black)
+        painter = QPainter(pix)
+        
+        # Test full painting pipeline with audio active
+        canvas.set_state("ACTIVE_CONVERSATION")
+        canvas.set_audio_level(0.72)
+        canvas._step()
+        canvas.paintEvent(None)
+        painter.end()
+
+
+def test_hologram_canvas_dim_factor_modes(qapp):
+    """
+    Verifies that _dim_factor returns appropriate power-saving factors
+    for sleeping and offline modes.
+    """
+    canvas = HologramCanvas()
+    canvas.set_state("LISTENING")
+    assert canvas._dim_factor() == 1.0
+
+    canvas.set_state("SLEEPING")
+    assert canvas._dim_factor() == 0.4
+
+    canvas.set_state("OFFLINE")
+    assert canvas._dim_factor() == 0.25

@@ -417,6 +417,11 @@ class HologramCanvas(QWidget):
         self._blink_tick = 0
         self._rot        = 0.0
 
+        # HUD Reticle and Chrome state
+        self._reticle_rot_outer = 0.0
+        self._reticle_rot_inner = 0.0
+        self._frame_tick = 0
+
         # Real voice-amplitude reactivity (0.0 - 1.0 RMS from mic / playback PCM stream)
         self._audio_level     = 0.0
         self._audio_level_t   = 0.0
@@ -496,6 +501,7 @@ class HologramCanvas(QWidget):
 
     def _step(self):
         self._tick += 1
+        self._frame_tick = (self._frame_tick + 1) % 0x10000
         now = time.time()
         theme = self.get_theme()
 
@@ -510,7 +516,7 @@ class HologramCanvas(QWidget):
             self._last_t = now
         self._halo += (self._tgt_halo - self._halo) * (0.35 if self._speaking else 0.12)
 
-        # Dynamic ring rotation speeds based on audio level
+        # Dynamic ring & reticle rotation speeds based on audio level
         audio_boost = 1.0 + (self._audio_level * 1.5 if audio_fresh else 0.0)
         spd = [1.2 * audio_boost, -0.8 * audio_boost, 1.9 * audio_boost] if self._speaking else [0.5, -0.3, 0.8]
         for i, s in enumerate(spd):
@@ -518,6 +524,9 @@ class HologramCanvas(QWidget):
 
         self._arc_spin  = (self._arc_spin  + (2.0 * audio_boost if self._speaking else 0.6)) % 360
         self._arc_inner = (self._arc_inner - (3.5 * audio_boost if self._speaking else 1.2)) % 360
+
+        self._reticle_rot_outer = (self._reticle_rot_outer + (0.8 * audio_boost if self._speaking else 0.3)) % 360.0
+        self._reticle_rot_inner = (self._reticle_rot_inner - (1.2 * audio_boost if self._speaking else 0.5)) % 360.0
 
         rot_spd = theme.get("speed", 0.02)
         self._rot = (self._rot + rot_spd) % (2 * math.pi)
@@ -540,6 +549,179 @@ class HologramCanvas(QWidget):
             if pt["y"] < -0.05 or pt["x"] < -0.05 or pt["x"] > 1.05:
                 pt.update(self._new_particle())
                 pt["y"] = 1.05
+
+    def _draw_hud_reticles(self, p: "QPainter", cx: float, cy: float, fw: float, primary_col: str, secondary_col: str, dim: float, audio_boost: float):
+        # 1. Outer calibrated degree ring
+        r_deg = fw * 0.485
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(qcol(primary_col, int(45 * dim)), 0.8))
+        p.drawEllipse(QRectF(cx - r_deg, cy - r_deg, r_deg * 2, r_deg * 2))
+
+        # Degree marks every 10 degrees, with major ticks and cardinal text
+        p.setFont(QFont("Consolas", 6))
+        for deg in range(0, 360, 10):
+            rad = math.radians(deg)
+            cos_a = math.cos(rad)
+            sin_a = math.sin(rad)
+            is_cardinal = (deg % 90 == 0)
+            is_major = (deg % 30 == 0)
+
+            tick_len = (10.0 if is_cardinal else (6.0 if is_major else 3.5)) + 2.0 * audio_boost
+            r1 = r_deg
+            r2 = r_deg - tick_len
+            alpha = int((200 if is_cardinal else (120 if is_major else 50)) * dim)
+            p.setPen(QPen(qcol(primary_col, alpha), 1.2 if is_cardinal else 0.8))
+            p.drawLine(QPointF(cx + r1 * cos_a, cy + r1 * sin_a),
+                       QPointF(cx + r2 * cos_a, cy + r2 * sin_a))
+
+            if is_cardinal:
+                labels = {0: "090", 90: "180", 180: "270", 270: "000"}
+                lbl = labels.get(deg, f"{deg:03d}")
+                lr = r_deg - 16.0
+                p.setPen(QPen(qcol(secondary_col, int(220 * dim)), 1))
+                p.drawText(QRectF(cx + lr * cos_a - 14, cy + lr * sin_a - 6, 28, 12),
+                           Qt.AlignmentFlag.AlignCenter, lbl)
+
+        # 2. Counter-rotating segmented orbital arcs
+        r_orb1 = fw * (0.435 + 0.015 * audio_boost)
+        r_orb2 = fw * (0.395 + 0.010 * audio_boost)
+
+        # Outer orbital arc (4 segments of 45 deg)
+        p.setPen(QPen(qcol(primary_col, int(110 * dim)), 1.4 + 0.6 * audio_boost))
+        for i in range(4):
+            start_a = (self._reticle_rot_outer + i * 90) % 360
+            p.drawArc(QRectF(cx - r_orb1, cy - r_orb1, r_orb1 * 2, r_orb1 * 2),
+                      int(start_a * 16), int(45 * 16))
+
+        # Inner orbital arc (3 segments of 60 deg)
+        p.setPen(QPen(qcol(secondary_col, int(90 * dim)), 1.0))
+        for i in range(3):
+            start_a = (self._reticle_rot_inner + i * 120) % 360
+            p.drawArc(QRectF(cx - r_orb2, cy - r_orb2, r_orb2 * 2, r_orb2 * 2),
+                      int(start_a * 16), int(60 * 16))
+
+        # 3. Precision crosshair targeting reticles
+        ch_in = fw * 0.16
+        ch_out = fw * 0.46
+        p.setPen(QPen(qcol(primary_col, int(60 * dim)), 0.8))
+        for angle in (0, 90, 180, 270):
+            rad = math.radians(angle)
+            ca, sa = math.cos(rad), math.sin(rad)
+            p.drawLine(QPointF(cx + ch_in * ca, cy + ch_in * sa),
+                       QPointF(cx + ch_out * ca, cy + ch_out * sa))
+            pip_r = ch_out + 3.0
+            p.setPen(QPen(qcol(secondary_col, int(150 * dim)), 1.2))
+            p.drawPoint(QPointF(cx + pip_r * ca, cy + pip_r * sa))
+            p.setPen(QPen(qcol(primary_col, int(60 * dim)), 0.8))
+
+    def _draw_arc_reactor(self, p: "QPainter", cx: float, cy: float, fw: float, primary_col: str, secondary_col: str, dim: float, audio_boost: float):
+        r_core = fw * (0.13 + 0.05 * audio_boost)
+
+        # 1. Outer magnetic confinement coil ring (12 coil segments)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        for i in range(12):
+            deg = self._arc_spin + i * 30
+            rad = math.radians(deg)
+            ca, sa = math.cos(rad), math.sin(rad)
+            p.setPen(QPen(qcol(primary_col, int(170 * dim)), 1.6 + 0.8 * audio_boost))
+            p.drawLine(QPointF(cx + (r_core * 0.88) * ca, cy + (r_core * 0.88) * sa),
+                       QPointF(cx + (r_core * 1.12) * ca, cy + (r_core * 1.12) * sa))
+
+        # 2. Segmented concentric confinement rings
+        p.setPen(QPen(qcol(primary_col, int(210 * dim)), 2.0 + 1.2 * audio_boost))
+        for i in range(6):
+            a_start = (self._arc_spin + i * 60) % 360
+            p.drawArc(QRectF(cx - r_core, cy - r_core, r_core * 2, r_core * 2),
+                      int(a_start * 16), int(36 * 16))
+
+        # 3. Rotating inner geometric containment core (Triangular polygon)
+        pts_t = []
+        r_tri = r_core * (0.58 + 0.08 * audio_boost)
+        for i in range(3):
+            a = math.radians(self._arc_inner + i * 120)
+            pts_t.append(QPointF(cx + r_tri * math.cos(a),
+                                 cy + r_tri * math.sin(a)))
+        p.setPen(QPen(qcol(secondary_col, int(220 * dim)), 1.8 + 0.8 * audio_boost))
+        for i in range(3):
+            p.drawLine(pts_t[i], pts_t[(i+1) % 3])
+
+        # Core vertex nodes
+        p.setBrush(QBrush(qcol(secondary_col, int(240 * dim))))
+        p.setPen(Qt.PenStyle.NoPen)
+        for pt in pts_t:
+            p.drawEllipse(pt, 2.2 + 1.0 * audio_boost, 2.2 + 1.0 * audio_boost)
+
+        # 4. Central luminous core emitter gradient
+        cg_r = r_core * (0.45 + 0.15 * audio_boost)
+        cg = QRadialGradient(cx, cy, cg_r)
+        cg.setColorAt(0.0, qcol(primary_col, int(255 * dim)))
+        cg.setColorAt(0.45, qcol(primary_col, int(150 * dim)))
+        cg.setColorAt(1.0, qcol(primary_col, 0))
+        p.setBrush(QBrush(cg))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawEllipse(QRectF(cx - cg_r, cy - cg_r, cg_r * 2, cg_r * 2))
+
+    def _draw_corner_telemetry(self, p: "QPainter", W: float, H: float, fw: float, primary_col: str, secondary_col: str, dim: float, audio_fresh: bool, audio_boost: float, theme: dict):
+        # Framing corner brackets
+        bl = 24
+        margin = max(14.0, fw * 0.035)
+        hl = margin
+        hr = W - margin
+        ht = margin
+        hb = H - margin
+        bc = qcol(primary_col, int(180 * dim))
+        p.setPen(QPen(bc, 1.8))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        for bx, by, dx, dy in [(hl, ht, 1, 1), (hr, ht, -1, 1),
+                               (hl, hb, 1, -1), (hr, hb, -1, -1)]:
+            p.drawLine(QPointF(bx, by), QPointF(bx + dx * bl, by))
+            p.drawLine(QPointF(bx, by), QPointF(bx, by + dy * bl))
+            p.fillRect(QRectF(bx + dx * 4 - 1, by + dy * 4 - 1, 3, 3), qcol(secondary_col, int(200 * dim)))
+
+        # Monospace HUD telemetry font
+        p.setFont(QFont("Consolas", 8))
+        alpha_pri = int(200 * dim)
+        alpha_sec = int(140 * dim)
+        line_h = 13
+
+        # Top-Left Telemetry
+        tl_x = hl + 8
+        tl_y = ht + 6
+        p.setPen(QPen(qcol(primary_col, alpha_pri), 1))
+        p.drawText(QPointF(tl_x, tl_y + line_h * 1), "SYS.LOC // MK-XXXIX")
+        p.setPen(QPen(qcol(secondary_col, alpha_sec), 1))
+        p.drawText(QPointF(tl_x, tl_y + line_h * 2), "CORE: ONLINE [SECURE]")
+        p.drawText(QPointF(tl_x, tl_y + line_h * 3), "LINK: GEMINI-LIVE 2.0")
+
+        # Top-Right Telemetry
+        tr_w = 150
+        tr_x = hr - tr_w - 8
+        tr_y = ht + 6
+        p.setPen(QPen(qcol(primary_col, alpha_pri), 1))
+        p.drawText(QRectF(tr_x, tr_y, tr_w, line_h), Qt.AlignmentFlag.AlignRight, f"TICK: 0x{self._frame_tick:04X}")
+        p.setPen(QPen(qcol(secondary_col, alpha_sec), 1))
+        p.drawText(QRectF(tr_x, tr_y + line_h, tr_w, line_h), Qt.AlignmentFlag.AlignRight, f"STATUS: {theme['label']}")
+        p.drawText(QRectF(tr_x, tr_y + line_h * 2, tr_w, line_h), Qt.AlignmentFlag.AlignRight, "SEC: FAIL-CLOSED")
+
+        # Bottom-Left Telemetry
+        bl_x = hl + 8
+        bl_y = hb - line_h * 3 - 4
+        db_txt = f"{20 * math.log10(max(0.001, self._audio_level)):+.1f} dB" if (audio_fresh and self._audio_level > 0.01) else "-INF dB"
+        p.setPen(QPen(qcol(primary_col, alpha_pri), 1))
+        p.drawText(QPointF(bl_x, bl_y + line_h * 1), f"AUDIO IN: {int(self._audio_level * 100):02d}%")
+        p.setPen(QPen(qcol(secondary_col, alpha_sec), 1))
+        p.drawText(QPointF(bl_x, bl_y + line_h * 2), f"RMS: {db_txt}")
+        p.drawText(QPointF(bl_x, bl_y + line_h * 3), f"GATE: {'PASS' if audio_boost > 0.05 else 'IDLE'}")
+
+        # Bottom-Right Telemetry
+        br_w = 140
+        br_x = hr - br_w - 8
+        br_y = hb - line_h * 3 - 4
+        p.setPen(QPen(qcol(primary_col, alpha_pri), 1))
+        p.drawText(QRectF(br_x, br_y, br_w, line_h), Qt.AlignmentFlag.AlignRight, "SENTINEL: ARMED")
+        p.setPen(QPen(qcol(secondary_col, alpha_sec), 1))
+        p.drawText(QRectF(br_x, br_y + line_h, br_w, line_h), Qt.AlignmentFlag.AlignRight, "INTEGRITY: OK")
+        p.drawText(QRectF(br_x, br_y + line_h * 2, br_w, line_h), Qt.AlignmentFlag.AlignRight, "AUDIT: VERIFIED")
 
     def _draw_wireframe(self, p: "QPainter", cx: float, cy: float, fw: float, primary_col: str, secondary_col: str): # type: ignore
         scale = fw * 0.27
@@ -638,6 +820,9 @@ class HologramCanvas(QWidget):
         p.setBrush(QBrush(grad)); p.setPen(Qt.PenStyle.NoPen)
         p.drawEllipse(QRectF(cx - grad_r, cy - grad_r, grad_r * 2, grad_r * 2))
 
+        # HUD Targeting Reticles (degree marks, counter-rotating orbital arcs, crosshairs)
+        self._draw_hud_reticles(p, cx, cy, fw, primary_col, secondary_col, dim, audio_boost)
+
         # Spinning hologram rings (projection halo)
         ring_specs = [(0.44, 3.0, 90, 65), (0.36, 2.0, 65, 48), (0.28, 1.3, 45, 32)]
         for idx, (r_frac, w_r, arc_l, gap) in enumerate(ring_specs):
@@ -664,43 +849,13 @@ class HologramCanvas(QWidget):
                   int(((self._arc_spin + 180) % 360) * 16), int(50 * 16))
 
         # Arc Reactor Core power source (pulsing with audio amplitude)
-        r_arc = fw * (0.12 + 0.04 * audio_boost)
-        for i in range(6):
-            a1 = math.radians(self._arc_spin + i * 60)
-            p.setPen(QPen(qcol(primary_col, int(200 * dim)), 2.0 + 1.0 * audio_boost))
-            p.drawArc(QRectF(cx-r_arc, cy-r_arc, r_arc*2, r_arc*2),
-                      int(math.degrees(a1) * 16), int(38 * 16))
-        p.setPen(QPen(qcol(secondary_col, int(180 * dim)), 1.5))
-        pts_t = []
-        for i in range(3):
-            a = math.radians(self._arc_inner + i * 120)
-            pts_t.append(QPointF(cx + r_arc * 0.55 * math.cos(a),
-                                 cy + r_arc * 0.55 * math.sin(a)))
-        for i in range(3):
-            p.drawLine(pts_t[i], pts_t[(i+1) % 3])
-        cg = QRadialGradient(cx, cy, r_arc * 0.42)
-        cg.setColorAt(0.0, qcol(primary_col, int(255 * dim)))
-        cg.setColorAt(0.5, qcol(primary_col, int(130 * dim)))
-        cg.setColorAt(1.0, qcol(primary_col, 0))
-        p.setBrush(QBrush(cg)); p.setPen(Qt.PenStyle.NoPen)
-        p.drawEllipse(QRectF(cx-r_arc*0.42, cy-r_arc*0.42, r_arc*0.84, r_arc*0.84))
+        self._draw_arc_reactor(p, cx, cy, fw, primary_col, secondary_col, dim, audio_boost)
 
         # Rotating wireframe robot bust — the hologram itself
         self._draw_wireframe(p, cx, cy, fw, primary_col, secondary_col)
 
-        # Corner brackets
-        bl  = 28
-        bc  = qcol(primary_col, int(200 * dim))
-        margin = fw * 0.04
-        hl = cx - fw * 0.46 + margin
-        hr = cx + fw * 0.46 - margin
-        ht = cy - fw * 0.46 + margin
-        hb = cy + fw * 0.46 - margin
-        p.setPen(QPen(bc, 1.8))
-        for bx, by, dx2, dy2 in [(hl, ht, 1, 1), (hr, ht, -1, 1),
-                                   (hl, hb, 1, -1), (hr, hb, -1, -1)]:
-            p.drawLine(QPointF(bx, by), QPointF(bx + dx2 * bl, by))
-            p.drawLine(QPointF(bx, by), QPointF(bx, by + dy2 * bl))
+        # Corner HUD framing & diagnostic telemetry readouts
+        self._draw_corner_telemetry(p, W, H, fw, primary_col, secondary_col, dim, audio_fresh, audio_boost, theme)
 
         # State label & symbol
         sy = cy + fw * 0.40
