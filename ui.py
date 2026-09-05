@@ -296,7 +296,6 @@ def _build_hologram_geometry():
     neck = len(verts); verts.append((0.0,  0.10, 0.0))       # neck point
     sh   = add_ring(0.55, 1.30)                               # shoulder ring
     ch   = add_ring(1.15, 1.05)                               # chest ring
-
     for i in range(N):
         j = (i + 1) % N
         edges.append((apex, up + i))
@@ -314,22 +313,91 @@ def _build_hologram_geometry():
 
 _HOLO_VERTS, _HOLO_EDGES = _build_hologram_geometry()
 
-_HOLO_SPEED = {   # rotation speed, radians/frame @ ~60fps
-    "SLEEPING":            0.005,
-    "LISTENING":           0.016,
-    "THINKING":            0.026,
-    "SPEAKING":             0.04,
-    "ACTIVE_CONVERSATION": 0.032,
-    "OFFLINE":              0.0,
+# ── Stark Industries HUD state theming palette ──────────────────────────────
+_STATE_THEMES: dict[str, dict[str, Any]] = {
+    "LISTENING": {
+        "primary":     C.GREEN,       # Emerald / HUD Green
+        "secondary":   C.STEEL,       # Steel Blue
+        "glow":        C.GREEN_D,
+        "speed":       0.018,
+        "label":       "LISTENING",
+        "symbol_on":   "●",
+        "symbol_off":  "○",
+    },
+    "THINKING": {
+        "primary":     C.STEEL,       # Arc Reactor Cyan / Steel Blue
+        "secondary":   C.GOLD,        # Stark Gold
+        "glow":        C.STEEL_DIM,
+        "speed":       0.026,
+        "label":       "THINKING",
+        "symbol_on":   "◈",
+        "symbol_off":  "◇",
+    },
+    "SPEAKING": {
+        "primary":     C.GOLD,        # Stark Gold / Amber
+        "secondary":   C.STEEL,       # Steel Blue
+        "glow":        C.GOLD_DIM,
+        "speed":       0.040,
+        "label":       "SPEAKING",
+        "symbol_on":   "▲",
+        "symbol_off":  "△",
+    },
+    "ACTIVE_CONVERSATION": {
+        "primary":     C.GOLD,        # Stark Gold
+        "secondary":   C.GREEN,       # HUD Green
+        "glow":        C.GOLD_DIM,
+        "speed":       0.032,
+        "label":       "ACTIVE CONVERSATION",
+        "symbol_on":   "◉",
+        "symbol_off":  "◎",
+    },
+    "ALERT": {
+        "primary":     C.RED,         # Security Crimson
+        "secondary":   C.PINK,        # Warning Pink
+        "glow":        C.RED,
+        "speed":       0.045,
+        "label":       "SECURITY ALERT",
+        "symbol_on":   "⚠",
+        "symbol_off":  "!",
+    },
+    "CRITICAL": {
+        "primary":     C.RED,         # Critical Alarm Red
+        "secondary":   C.PINK,
+        "glow":        C.RED,
+        "speed":       0.050,
+        "label":       "CRITICAL ALERT",
+        "symbol_on":   "✖",
+        "symbol_off":  "✕",
+    },
+    "SLEEPING": {
+        "primary":     C.TEXT_DIM,    # Stealth dim amber/grey
+        "secondary":   C.GOLD_GHO,
+        "glow":        C.GOLD_GHO,
+        "speed":       0.005,
+        "label":       "SLEEPING",
+        "symbol_on":   "☾",
+        "symbol_off":  "·",
+    },
+    "OFFLINE": {
+        "primary":     C.BORDER,      # Dark border / standby
+        "secondary":   C.DARK,
+        "glow":        C.DARK,
+        "speed":       0.0,
+        "label":       "OFFLINE",
+        "symbol_on":   "■",
+        "symbol_off":  "□",
+    },
 }
+
+_HOLO_SPEED = {k: v["speed"] for k, v in _STATE_THEMES.items()}
 
 
 # ── Rotating hologram (centre panel — replaces video) ────────────────────────
 class HologramCanvas(QWidget):
     """
-    A self-contained, code-drawn rotating holographic robot bust.
-    No video files, no QtMultimedia — just QPainter + trig, so it can't
-    hang on a codec/driver issue the way the old video player could.
+    A self-contained, code-drawn rotating holographic robot bust with
+    Stark Industries HUD theming and real audio amplitude reactivity.
+    No video files, no QtMultimedia — pure QPainter + trig.
     """
 
     def __init__(self, parent=None):
@@ -349,26 +417,15 @@ class HologramCanvas(QWidget):
         self._blink_tick = 0
         self._rot        = 0.0
 
-        # PHASE 1 GAP FIX: real voice-amplitude reactivity. main.py pushes
-        # a 0.0-1.0 RMS level via set_audio_level() from the actual mic/
-        # playback PCM data (see JarvisUI.set_audio_level). _audio_level_age
-        # tracks how stale that last sample is — if nothing has arrived
-        # recently (THINKING, or a brief gap), the halo falls back to the
-        # original gentle randomized idle drift so it never looks frozen.
+        # Real voice-amplitude reactivity (0.0 - 1.0 RMS from mic / playback PCM stream)
         self._audio_level     = 0.0
         self._audio_level_t   = 0.0
         self._AUDIO_STALE_S   = 0.5
 
-        # PHASE 1 GAP FIX: particle system — small drifting data points in
-        # the background, the kind of "holographic dust" effect Stark's
-        # displays have. Purely decorative, cheap (N small circles updated
-        # each frame), density/speed react to state.
+        # Floating holographic data particles
         self._particles = [self._new_particle() for _ in range(36)]
 
-        # PHASE 1 GAP FIX: brief glitch/flicker burst on real state
-        # transitions (LISTENING -> THINKING -> SPEAKING etc.) — a handful
-        # of horizontal tear lines + a momentary RGB-split style offset,
-        # rendered for ~150ms then cleared. Pure decoration, no asset.
+        # Glitch / flicker shader burst on major state transitions
         self._glitch_until = 0.0
         self._glitch_lines: list[tuple[float, float, float]] = []
 
@@ -376,25 +433,26 @@ class HologramCanvas(QWidget):
         self._tmr.timeout.connect(self._step)
         self._tmr.start(16)
 
-    # GLITCH FIX: the previous allow-list approach kept breaking because
-    # JARVIS's UI label actually comes from TWO independent sources that
-    # fire constantly during one normal exchange:
-    #   1) main.py's StateManager callback (SLEEPING/LISTENING/ACTIVE/OFFLINE)
-    #   2) main.py's set_speaking() calling ui.set_state() DIRECTLY with
-    #      "THINKING"/"SPEAKING" labels that the state manager never sees
-    # That means a single reply bounces the label through something like
-    # LISTENING -> THINKING -> ACTIVE -> SPEAKING -> LISTENING -> ACTIVE
-    # -> SLEEPING, and any pair-based allow-list either misses most of
-    # that churn or (worse) matches several of those hops, so the glitch
-    # fires multiple times per reply and looks like constant flashing.
-    #
-    # Fix: stop trying to allow-list every pair. Only glitch on the two
-    # transitions a user actually perceives as a real mode change —
-    # JARVIS starting to talk, and JARVIS going fully offline/asleep from
-    # a cold state. Everything else (THINKING, ACTIVE, mute toggles,
-    # LISTENING<->SLEEPING churn) never glitches, full stop.
-    _GLITCH_ENTER_STATES = {"SPEAKING"}
+    _GLITCH_ENTER_STATES = {"SPEAKING", "ALERT", "CRITICAL"}
     _GLITCH_EXIT_TO_OFFLINE = {"OFFLINE"}
+
+    def get_theme(self) -> dict[str, Any]:
+        """Returns the HUD visual theme dictionary for the current state."""
+        st = self._state.upper()
+        if st in _STATE_THEMES:
+            return _STATE_THEMES[st]
+        for key, th in _STATE_THEMES.items():
+            if key in st:
+                return th
+        return {
+            "primary":     C.GOLD,
+            "secondary":   C.STEEL,
+            "glow":        C.GOLD_DIM,
+            "speed":       0.020,
+            "label":       self._state,
+            "symbol_on":   "●",
+            "symbol_off":  "○",
+        }
 
     def set_state(self, state: str):
         prev = self._state
@@ -414,10 +472,7 @@ class HologramCanvas(QWidget):
         ]
 
     def set_audio_level(self, level: float):
-        """PHASE 1 GAP FIX: called from main.py with a real 0.0-1.0 RMS
-        amplitude sample from the live mic (LISTENING) or playback
-        (SPEAKING) PCM stream. Louder = bigger pulse, driven by an actual
-        signal instead of randomized motion."""
+        """Called with real 0.0-1.0 RMS amplitude sample from live mic or speaker PCM stream."""
         self._audio_level   = max(0.0, min(1.0, level))
         self._audio_level_t = time.time()
 
@@ -442,16 +497,12 @@ class HologramCanvas(QWidget):
     def _step(self):
         self._tick += 1
         now = time.time()
+        theme = self.get_theme()
 
-        # PHASE 1 GAP FIX: prefer a real, recent audio-level sample over the
-        # randomized idle drift. If main.py hasn't pushed a sample recently
-        # (e.g. THINKING, or between utterances), fall back to the original
-        # gentle random motion so the hologram never just sits dead-still.
+        # Real audio RMS reactivity with gentle idle drift fallback
         audio_fresh = (now - self._audio_level_t) < self._AUDIO_STALE_S
-        if audio_fresh and self._state in ("LISTENING", "SPEAKING", "ACTIVE_CONVERSATION"):
-            # Map 0..1 RMS level to the same halo range the old randomized
-            # version used, so visual scale stays consistent.
-            lo, hi = (120, 220) if self._speaking else (45, 110)
+        if audio_fresh and self._state in ("LISTENING", "SPEAKING", "ACTIVE_CONVERSATION", "ALERT", "CRITICAL"):
+            lo, hi = (120, 220) if self._speaking else (45, 120)
             self._tgt_halo = lo + (hi - lo) * self._audio_level
             self._last_t = now
         elif now - self._last_t > (0.08 if self._speaking else 0.4):
@@ -459,14 +510,17 @@ class HologramCanvas(QWidget):
             self._last_t = now
         self._halo += (self._tgt_halo - self._halo) * (0.35 if self._speaking else 0.12)
 
-        spd = [1.2, -0.8, 1.9] if self._speaking else [0.5, -0.3, 0.8]
+        # Dynamic ring rotation speeds based on audio level
+        audio_boost = 1.0 + (self._audio_level * 1.5 if audio_fresh else 0.0)
+        spd = [1.2 * audio_boost, -0.8 * audio_boost, 1.9 * audio_boost] if self._speaking else [0.5, -0.3, 0.8]
         for i, s in enumerate(spd):
             self._rings[i] = (self._rings[i] + s) % 360
 
-        self._arc_spin  = (self._arc_spin  + (2.0 if self._speaking else 0.6)) % 360
-        self._arc_inner = (self._arc_inner - (3.5 if self._speaking else 1.2)) % 360
+        self._arc_spin  = (self._arc_spin  + (2.0 * audio_boost if self._speaking else 0.6)) % 360
+        self._arc_inner = (self._arc_inner - (3.5 * audio_boost if self._speaking else 1.2)) % 360
 
-        self._rot = (self._rot + _HOLO_SPEED.get(self._state, 0.02)) % (2 * math.pi)
+        rot_spd = theme.get("speed", 0.02)
+        self._rot = (self._rot + rot_spd) % (2 * math.pi)
 
         self._blink_tick += 1
         if self._blink_tick >= 40:
@@ -474,7 +528,6 @@ class HologramCanvas(QWidget):
             self._blink_tick = 0
 
         self._step_particles()
-
         self.update()
 
     def _step_particles(self):
@@ -484,17 +537,16 @@ class HologramCanvas(QWidget):
             pt["y"] += pt["vy"] * speed_mul
             pt["drift"] += 0.01
             pt["x"] += math.sin(pt["drift"]) * 0.00015
-            # Wrap around — particles drift slowly upward and respawn at
-            # the bottom once they float off the top, like rising dust.
             if pt["y"] < -0.05 or pt["x"] < -0.05 or pt["x"] > 1.05:
                 pt.update(self._new_particle())
                 pt["y"] = 1.05
 
-    def _draw_wireframe(self, p: "QPainter", cx: float, cy: float, fw: float): # type: ignore
+    def _draw_wireframe(self, p: "QPainter", cx: float, cy: float, fw: float, primary_col: str, secondary_col: str): # type: ignore
         scale = fw * 0.27
         focal = 4.2
         ct, st = math.cos(self._rot), math.sin(self._rot)
         dim    = self._dim_factor()
+        audio_boost = self._audio_level if (time.time() - self._audio_level_t) < self._AUDIO_STALE_S else 0.0
 
         pts2d, depth = [], []
         for (x, y, z) in _HOLO_VERTS:
@@ -513,16 +565,18 @@ class HologramCanvas(QWidget):
             d = (depth[i] + depth[j]) * 0.5
             t = max(0.0, min(1.0, (d + 1.3) / 2.6))
             alpha = int((40 + 180 * t) * dim)
-            p.setPen(QPen(qcol(C.GOLD, alpha), 1.4 if t > 0.5 else 1.0))
+            line_w = (1.4 + 1.2 * audio_boost) if t > 0.5 else (1.0 + 0.6 * audio_boost)
+            p.setPen(QPen(qcol(primary_col, alpha), line_w))
             p.drawLine(QPointF(*pts2d[i]), QPointF(*pts2d[j]))
 
         for idx, (sx, sy) in enumerate(pts2d):
             t = max(0.0, min(1.0, (depth[idx] + 1.3) / 2.6))
             if t > 0.78:
                 a = int(220 * dim)
-                p.setPen(QPen(qcol(C.STEEL, a), 1))
-                p.setBrush(QBrush(qcol(C.STEEL, a)))
-                p.drawEllipse(QPointF(sx, sy), 1.6, 1.6)
+                p.setPen(QPen(qcol(secondary_col, a), 1))
+                p.setBrush(QBrush(qcol(secondary_col, a)))
+                node_r = 1.6 + 1.0 * audio_boost
+                p.drawEllipse(QPointF(sx, sy), node_r, node_r)
 
     def paintEvent(self, _):
         p = QPainter(self)
@@ -530,6 +584,13 @@ class HologramCanvas(QWidget):
         W, H = self.width(), self.height()
         cx, cy = W / 2.0, H / 2.0
         fw = min(W, H)
+        theme = self.get_theme()
+        primary_col   = theme["primary"]
+        secondary_col = theme["secondary"]
+        dim = self._dim_factor()
+        now = time.time()
+        audio_fresh = (now - self._audio_level_t) < self._AUDIO_STALE_S
+        audio_boost = self._audio_level if audio_fresh else 0.0
 
         # Background
         p.fillRect(self.rect(), QColor(C.BG))
@@ -540,7 +601,7 @@ class HologramCanvas(QWidget):
         dy   = size * 1.5
         cols = int(W / dx) + 3
         rows = int(H / dy) + 3
-        pen_hex = QPen(qcol(C.GOLD, 12), 0.6)
+        pen_hex = QPen(qcol(primary_col, int(12 * dim)), 0.6)
         p.setPen(pen_hex); p.setBrush(Qt.BrushStyle.NoBrush)
         for row in range(-1, rows):
             for col in range(-1, cols):
@@ -559,34 +620,32 @@ class HologramCanvas(QWidget):
                 path.closeSubpath()
                 p.drawPath(path)
 
-        # PHASE 1 GAP FIX: floating data-point particles — drawn before the
-        # glow/rings/wireframe so they read as background "holographic dust"
-        # rather than sitting on top of and cluttering the main figure.
-        dim = self._dim_factor()
+        # Floating data particles
         p.setPen(Qt.PenStyle.NoPen)
         for pt in self._particles:
             px = pt["x"] * W
             py = pt["y"] * H
             a  = int(pt["a"] * dim)
-            p.setBrush(QBrush(qcol(C.GOLD, a)))
+            p.setBrush(QBrush(qcol(primary_col, a)))
             p.drawEllipse(QPointF(px, py), pt["r"], pt["r"])
 
-        # Outer glow
-        grad = QRadialGradient(cx, cy, fw * 0.55)
-        grad.setColorAt(0.0, qcol(C.GOLD, int(self._halo * 0.5)))
-        grad.setColorAt(0.4, qcol(C.GOLD, int(self._halo * 0.15)))
-        grad.setColorAt(1.0, qcol(C.GOLD, 0))
+        # Outer glow (scaled by real audio amplitude)
+        grad_r = fw * (0.55 + 0.12 * audio_boost)
+        grad = QRadialGradient(cx, cy, grad_r)
+        grad.setColorAt(0.0, qcol(primary_col, int(self._halo * 0.5)))
+        grad.setColorAt(0.4, qcol(primary_col, int(self._halo * 0.15)))
+        grad.setColorAt(1.0, qcol(primary_col, 0))
         p.setBrush(QBrush(grad)); p.setPen(Qt.PenStyle.NoPen)
-        p.drawEllipse(QRectF(cx - fw*0.55, cy - fw*0.55, fw*1.1, fw*1.1))
+        p.drawEllipse(QRectF(cx - grad_r, cy - grad_r, grad_r * 2, grad_r * 2))
 
         # Spinning hologram rings (projection halo)
         ring_specs = [(0.44, 3.0, 90, 65), (0.36, 2.0, 65, 48), (0.28, 1.3, 45, 32)]
         for idx, (r_frac, w_r, arc_l, gap) in enumerate(ring_specs):
-            ring_r = fw * r_frac
+            ring_r = fw * (r_frac + 0.03 * audio_boost * (idx + 1))
             base   = self._rings[idx]
             a_val  = max(0, min(255, int(self._halo * (1.0 - idx * 0.2))))
-            col    = qcol(C.GOLD, a_val)
-            p.setPen(QPen(col, w_r)); p.setBrush(Qt.BrushStyle.NoBrush)
+            col    = qcol(primary_col, a_val)
+            p.setPen(QPen(col, w_r + 0.8 * audio_boost)); p.setBrush(Qt.BrushStyle.NoBrush)
             angle = base
             rect  = QRectF(cx - ring_r, cy - ring_r, ring_r * 2, ring_r * 2)
             while angle < base + 360:
@@ -596,22 +655,22 @@ class HologramCanvas(QWidget):
         # Scan arcs
         sr = fw * 0.46
         sa = min(255, int(self._halo * 1.5))
-        p.setPen(QPen(qcol(C.GOLD, sa), 2.2))
+        p.setPen(QPen(qcol(primary_col, sa), 2.2 + 1.0 * audio_boost))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawArc(QRectF(cx-sr, cy-sr, sr*2, sr*2),
                   int(self._arc_spin * 16), int(70 * 16))
-        p.setPen(QPen(qcol(C.STEEL, sa // 2), 1.4))
+        p.setPen(QPen(qcol(secondary_col, sa // 2), 1.4))
         p.drawArc(QRectF(cx-sr, cy-sr, sr*2, sr*2),
                   int(((self._arc_spin + 180) % 360) * 16), int(50 * 16))
 
-        # Core power source (glows through the chest of the rotating figure)
-        r_arc = fw * 0.12
+        # Arc Reactor Core power source (pulsing with audio amplitude)
+        r_arc = fw * (0.12 + 0.04 * audio_boost)
         for i in range(6):
             a1 = math.radians(self._arc_spin + i * 60)
-            p.setPen(QPen(qcol(C.GOLD, 200), 2.0))
+            p.setPen(QPen(qcol(primary_col, int(200 * dim)), 2.0 + 1.0 * audio_boost))
             p.drawArc(QRectF(cx-r_arc, cy-r_arc, r_arc*2, r_arc*2),
                       int(math.degrees(a1) * 16), int(38 * 16))
-        p.setPen(QPen(qcol(C.STEEL, 180), 1.5))
+        p.setPen(QPen(qcol(secondary_col, int(180 * dim)), 1.5))
         pts_t = []
         for i in range(3):
             a = math.radians(self._arc_inner + i * 120)
@@ -620,18 +679,18 @@ class HologramCanvas(QWidget):
         for i in range(3):
             p.drawLine(pts_t[i], pts_t[(i+1) % 3])
         cg = QRadialGradient(cx, cy, r_arc * 0.42)
-        cg.setColorAt(0.0, qcol(C.GOLD, 255))
-        cg.setColorAt(0.5, qcol(C.GOLD, 130))
-        cg.setColorAt(1.0, qcol(C.GOLD, 0))
+        cg.setColorAt(0.0, qcol(primary_col, int(255 * dim)))
+        cg.setColorAt(0.5, qcol(primary_col, int(130 * dim)))
+        cg.setColorAt(1.0, qcol(primary_col, 0))
         p.setBrush(QBrush(cg)); p.setPen(Qt.PenStyle.NoPen)
         p.drawEllipse(QRectF(cx-r_arc*0.42, cy-r_arc*0.42, r_arc*0.84, r_arc*0.84))
 
         # Rotating wireframe robot bust — the hologram itself
-        self._draw_wireframe(p, cx, cy, fw)
+        self._draw_wireframe(p, cx, cy, fw, primary_col, secondary_col)
 
         # Corner brackets
         bl  = 28
-        bc  = qcol(C.GOLD, 200)
+        bc  = qcol(primary_col, int(200 * dim))
         margin = fw * 0.04
         hl = cx - fw * 0.46 + margin
         hr = cx + fw * 0.46 - margin
@@ -643,38 +702,29 @@ class HologramCanvas(QWidget):
             p.drawLine(QPointF(bx, by), QPointF(bx + dx2 * bl, by))
             p.drawLine(QPointF(bx, by), QPointF(bx, by + dy2 * bl))
 
-        # State label
+        # State label & symbol
         sy = cy + fw * 0.40
-        if self._speaking:
-            txt, col2 = "SPEAKING",  qcol(C.GOLD)
-        elif self._state == "THINKING":
-            sym = "◈" if self._blink else "◇"
-            txt, col2 = f"{sym}  THINKING", qcol(C.STEEL)
-        elif self._state == "LISTENING":
-            sym = "●" if self._blink else "○"
-            txt, col2 = f"{sym}  LISTENING", qcol(C.GREEN)
-        elif self._state == "SLEEPING":
-            txt, col2 = "SLEEPING", qcol(C.TEXT_DIM)
-        else:
-            sym = "●" if self._blink else "○"
-            txt, col2 = f"{sym}  {self._state}", qcol(C.TEXT_MED)
+        sym = theme["symbol_on"] if self._blink else theme["symbol_off"]
+        txt = f"{sym}  {theme['label']}"
+        if audio_fresh and self._audio_level > 0.05 and self._state in ("LISTENING", "SPEAKING", "ACTIVE_CONVERSATION"):
+            db_approx = int(20 * math.log10(max(0.001, self._audio_level)))
+            txt += f"  [{db_approx} dB]"
+
         p.setOpacity(1.0)
-        p.setPen(QPen(col2, 1))
+        p.setPen(QPen(qcol(primary_col, int(255 * dim)), 1))
         p.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
         p.drawText(QRectF(0, sy, W, 26), Qt.AlignmentFlag.AlignCenter, txt)
 
-        # PHASE 1 GAP FIX: glitch/flicker burst on a state transition — a
-        # few horizontal tear lines, each redrawing a thin strip of the
-        # frame offset sideways with a slight color fringe, for ~150ms.
+        # Glitch / flicker shader burst on major state transitions
         if time.time() < self._glitch_until:
             for (y_frac, h_frac, offset) in self._glitch_lines:
                 gy = y_frac * H
                 gh = max(1.0, h_frac * H)
                 p.setOpacity(0.5)
                 p.setPen(Qt.PenStyle.NoPen)
-                p.setBrush(QBrush(qcol(C.STEEL, 90)))
+                p.setBrush(QBrush(qcol(secondary_col, 90)))
                 p.drawRect(QRectF(offset, gy, W, gh))
-                p.setBrush(QBrush(qcol(C.GOLD, 70)))
+                p.setBrush(QBrush(qcol(primary_col, 70)))
                 p.drawRect(QRectF(-offset, gy + gh * 0.4, W, gh * 0.6))
             p.setOpacity(1.0)
 
