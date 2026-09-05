@@ -293,3 +293,87 @@ def test_speak_via_edge_tts_streams_real_pcm_rms(monkeypatch):
     assert any(lvl > 0.05 for lvl in captured_levels), "Expected real non-zero voice amplitude"
     assert len(set(captured_levels)) > 1, "Expected varying voice amplitude levels across speech chunks"
     assert len(streamed_chunks) > 0, "Expected PCM audio chunks to be streamed through sounddevice.OutputStream"
+
+
+def test_frameless_window_and_hud_controls(qapp):
+    """
+    Step A1 Verification:
+    Verifies that MainWindow is created with FramelessWindowHint, contains
+    the custom HUD title-bar action buttons (settings, minimize, maximize, close),
+    and sets up the fallback exit shortcuts.
+    """
+    from ui import MainWindow
+    win = MainWindow()
+    assert win.windowFlags() & Qt.WindowType.FramelessWindowHint
+    assert hasattr(win, "_btn_cfg")
+    assert hasattr(win, "_btn_min")
+    assert hasattr(win, "_btn_max")
+    assert hasattr(win, "_btn_cls")
+    assert hasattr(win, "_sc_quit1")
+    assert hasattr(win, "_sc_quit2")
+    assert hasattr(win, "_sc_quit3")
+
+
+def test_frameless_edge_hit_testing(qapp):
+    """
+    Step A1 Verification:
+    Verifies 8-direction edge and corner hit-testing for frameless window resizing.
+    """
+    from ui import MainWindow
+    from PyQt6.QtCore import QPoint
+    win = MainWindow()
+    win.resize(900, 600)
+    
+    # Top-Left corner
+    assert win._hit_test_edge(QPoint(2, 2)) == "top_left"
+    # Top-Right corner
+    assert win._hit_test_edge(QPoint(898, 2)) == "top_right"
+    # Bottom-Left corner
+    assert win._hit_test_edge(QPoint(2, 598)) == "bottom_left"
+    # Bottom-Right corner
+    assert win._hit_test_edge(QPoint(898, 598)) == "bottom_right"
+    # Left edge
+    assert win._hit_test_edge(QPoint(2, 300)) == "left"
+    # Right edge
+    assert win._hit_test_edge(QPoint(898, 300)) == "right"
+    # Top edge
+    assert win._hit_test_edge(QPoint(450, 2)) == "top"
+    # Bottom edge
+    assert win._hit_test_edge(QPoint(450, 598)) == "bottom"
+    # Center (inside window)
+    assert win._hit_test_edge(QPoint(450, 300)) is None
+
+
+def test_global_stylesheet_and_dialog_theming(qapp):
+    """
+    Step A2 & A3 Verification:
+    Verifies global stylesheet generation and overlay theme styling.
+    """
+    from ui import _build_global_stylesheet, SettingsOverlay, SetupOverlay, C
+    qss = _build_global_stylesheet()
+    assert C.BG in qss
+    assert C.GOLD in qss
+    assert "QPushButton" in qss
+    assert "QSlider" in qss
+    assert "QScrollBar" in qss
+
+    settings = SettingsOverlay(0.75)
+    assert hasattr(settings, "_slider")
+    assert settings._slider.value() == 75
+
+    setup = SetupOverlay()
+    assert hasattr(setup, "_key_input")
+    assert hasattr(setup, "_or_input")
+
+
+def test_memory_editor_overlay_theme_alignment(qapp):
+    """
+    Step A2 Verification:
+    Verifies MemoryEditorOverlay adopts the Stark Industries palette.
+    """
+    from memory.memory_editor import MemoryEditorOverlay, _PRI, _BG
+    editor = MemoryEditorOverlay()
+    assert _PRI == "#C8922A"
+    assert _BG == "#0E0F11"
+    assert hasattr(editor, "_count_lbl")
+

@@ -1356,8 +1356,8 @@ class SetupOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
             SetupOverlay {{
-                background: rgba(8, 9, 11, 248);
-                border: 1px solid {C.GOLD_DIM};
+                background: rgba(8, 9, 11, 250);
+                border: 1px solid {C.GOLD};
                 border-radius: 4px;
             }}
         """)
@@ -1376,12 +1376,12 @@ class SetupOverlay(QWidget):
             w.setStyleSheet(f"color: {color}; background: transparent;")
             return w
 
-        lay.addWidget(_lbl("INITIALISATION REQUIRED", 12, True))
-        lay.addWidget(_lbl("Configure J.A.R.V.I.S. before first boot.", 8,
-                           color=C.TEXT_DIM))
+        lay.addWidget(_lbl("◈  CORE INITIALISATION  //  MARK-XXXIX", 11, True))
+        lay.addWidget(_lbl("Primary authentication keys required for system ignition, sir.", 8,
+                           color=C.TEXT_MED))
         lay.addSpacing(4)
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {C.BORDER};"); lay.addWidget(sep)
+        sep.setStyleSheet(f"color: {C.GOLD_DIM};"); lay.addWidget(sep)
         lay.addSpacing(2)
 
         lay.addWidget(_lbl("GEMINI API KEY", 7, color=C.TEXT_DIM,
@@ -1414,10 +1414,10 @@ class SetupOverlay(QWidget):
         sep2.setStyleSheet(f"color: {C.BORDER};"); lay.addWidget(sep2)
         lay.addSpacing(4)
 
-        lay.addWidget(_lbl("OPERATING SYSTEM", 7, color=C.TEXT_DIM,
+        lay.addWidget(_lbl("HOST PLATFORM SUBSYSTEM", 7, color=C.TEXT_DIM,
                            align=Qt.AlignmentFlag.AlignLeft))
         det_name = {"windows": "Windows", "mac": "macOS", "linux": "Linux"}[detected]
-        lay.addWidget(_lbl(f"Auto-detected: {det_name}", 7, color=C.STEEL,
+        lay.addWidget(_lbl(f"Target Environment Detected: {det_name}", 7, color=C.STEEL,
                            align=Qt.AlignmentFlag.AlignLeft))
 
         os_row = QHBoxLayout(); os_row.setSpacing(6)
@@ -1434,17 +1434,18 @@ class SetupOverlay(QWidget):
         self._sel(detected)
         lay.addSpacing(10)
 
-        init_btn = QPushButton("INITIALISE SYSTEMS")
+        init_btn = QPushButton("INITIALISE CORE SYSTEMS, SIR")
         init_btn.setFont(QFont("Arial", 9, QFont.Weight.Bold))
         init_btn.setFixedHeight(32)
         init_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         init_btn.setStyleSheet(f"""
             QPushButton {{
-                background: transparent; color: {C.GOLD};
-                border: 1px solid {C.GOLD_DIM}; border-radius: 2px;
+                background: {C.PANEL2}; color: {C.GOLD};
+                border: 1px solid {C.GOLD}; border-radius: 2px;
             }}
             QPushButton:hover {{
-                background: {C.GOLD_GHO}; border: 1px solid {C.GOLD};
+                background: {C.GOLD_GHO}; color: {C.WHITE};
+                border: 1px solid {C.WHITE};
             }}
         """)
         init_btn.clicked.connect(self._submit)
@@ -1504,8 +1505,8 @@ class SettingsOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
             SettingsOverlay {{
-                background: rgba(8, 9, 11, 248);
-                border: 1px solid {C.GOLD_DIM};
+                background: rgba(8, 9, 11, 250);
+                border: 1px solid {C.GOLD};
                 border-radius: 4px;
             }}
         """)
@@ -1522,7 +1523,7 @@ class SettingsOverlay(QWidget):
             return w
 
         hrow = QHBoxLayout()
-        hrow.addWidget(_lbl("SETTINGS", 12, True))
+        hrow.addWidget(_lbl("◈  SYSTEM CONFIGURATION  //  DIAGNOSTICS", 10, True))
         hrow.addStretch()
         x = QPushButton("✕")
         x.setFixedSize(22, 22)
@@ -1537,14 +1538,13 @@ class SettingsOverlay(QWidget):
         lay.addLayout(hrow)
 
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {C.BORDER};"); lay.addWidget(sep)
+        sep.setStyleSheet(f"color: {C.GOLD_DIM};"); lay.addWidget(sep)
         lay.addSpacing(4)
 
-        lay.addWidget(_lbl("WAKE-WORD SENSITIVITY", 7, color=C.TEXT_DIM,
+        lay.addWidget(_lbl("WAKE-WORD ACOUSTIC SENSITIVITY", 7, color=C.TEXT_DIM,
                            align=Qt.AlignmentFlag.AlignLeft))
         lay.addWidget(_lbl(
-            "Lower = more sensitive (may trigger on background audio). "
-            "Higher = stricter (may miss soft speech).",
+            "Acoustic threshold detection for the wake engine, sir. Lower value = elevated sensitivity.",
             7, color=C.TEXT_MED, align=Qt.AlignmentFlag.AlignLeft))
         lay.addSpacing(2)
         self._val_lbl = _lbl(f"{initial_sensitivity:.2f}", 11, True, C.GOLD)
@@ -1562,6 +1562,7 @@ class SettingsOverlay(QWidget):
             QSlider::handle:horizontal {{
                 background: {C.GOLD}; width: 14px; height: 14px;
                 margin: -6px 0; border-radius: 7px;
+                border: 1px solid {C.WHITE};
             }}
             QSlider::sub-page:horizontal {{
                 background: {C.GOLD_DIM}; border-radius: 1px;
@@ -1573,21 +1574,30 @@ class SettingsOverlay(QWidget):
         lay.addLayout(row)
 
         lay.addSpacing(8)
-        done = QPushButton("DONE")
+        done = QPushButton("CONFIRM PARAMETERS")
         done.setFont(QFont("Arial", 9, QFont.Weight.Bold))
         done.setFixedHeight(30)
         done.setCursor(Qt.CursorShape.PointingHandCursor)
         done.setStyleSheet(f"""
             QPushButton {{
-                background: transparent; color: {C.GOLD};
+                background: {C.PANEL2}; color: {C.GOLD};
                 border: 1px solid {C.GOLD_DIM}; border-radius: 2px;
             }}
             QPushButton:hover {{
-                background: {C.GOLD_GHO}; border: 1px solid {C.GOLD};
+                background: {C.GOLD_GHO}; border: 1px solid {C.GOLD}; color: {C.WHITE};
             }}
         """)
         done.clicked.connect(self._close)
         lay.addWidget(done)
+
+    def _on_sens(self, v: int):
+        val = v / 100.0
+        self._val_lbl.setText(f"{val:.2f}")
+        self.changed.emit(val)
+
+    def _close(self):
+        self.hide()
+        self.closed.emit()
 
     def _on_sens(self, v: int):
         val = v / 100.0
@@ -1773,6 +1783,8 @@ class MainWindow(QMainWindow):
     def __init__(self, _face_path: str = ""):
         super().__init__()
         self.setWindowTitle("J.A.R.V.I.S — MARK XXXIX")
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.setMinimumSize(_MIN_W, _MIN_H)
         self.resize(_DEFAULT_W, _DEFAULT_H)
 
@@ -1797,8 +1809,16 @@ class MainWindow(QMainWindow):
         self._current_file: str | None = None
         self._wake_sensitivity = self._load_wake_sensitivity()
 
+        # Frameless edge resizing & dragging state
+        self._drag_pos = None
+        self._resizing = False
+        self._resize_edge = None
+        self._resize_start_geo = None
+        self._resize_start_pos = None
+        self._EDGE_MARGIN = 7
+
         central = QWidget()
-        central.setStyleSheet(f"background: {C.BG};")
+        central.setStyleSheet(f"background: {C.BG}; border: 1px solid {C.GOLD_DIM}; border-radius: 4px;")
         self.setCentralWidget(central)
 
         root = QVBoxLayout(central)
@@ -1865,10 +1885,17 @@ class MainWindow(QMainWindow):
             # setup instead — see _on_setup_done.)
             QTimer.singleShot(0, self._play_boot_sequence)
 
+        # Keyboard shortcuts & exit fallbacks
         self._sc_mute = QShortcut(QKeySequence("F4"), self)
         self._sc_mute.activated.connect(self._toggle_mute)
         self._sc_full = QShortcut(QKeySequence("F11"), self)
         self._sc_full.activated.connect(self._toggle_fullscreen)
+        self._sc_quit1 = QShortcut(QKeySequence("Alt+F4"), self)
+        self._sc_quit1.activated.connect(self._close_app)
+        self._sc_quit2 = QShortcut(QKeySequence("Ctrl+Q"), self)
+        self._sc_quit2.activated.connect(self._close_app)
+        self._sc_quit3 = QShortcut(QKeySequence("Ctrl+W"), self)
+        self._sc_quit3.activated.connect(self._close_app)
 
     # ── Boot sequence ─────────────────────────────────────────────────────────
     def _play_boot_sequence(self):
@@ -1892,7 +1919,8 @@ class MainWindow(QMainWindow):
         w.setFixedHeight(54)
         w.setStyleSheet(f"background: {C.DARK}; border-bottom: 1px solid {C.GOLD_DIM};")
         lay = QHBoxLayout(w)
-        lay.setContentsMargins(16, 0, 16, 0)
+        lay.setContentsMargins(14, 0, 10, 0)
+        lay.setSpacing(10)
 
         # Left: MARK XXXIX + status dot
         left_row = QHBoxLayout(); left_row.setSpacing(8)
@@ -1919,10 +1947,12 @@ class MainWindow(QMainWindow):
         mid.addWidget(sub)
         lay.addLayout(mid, stretch=2)
 
-        # Right: clock + date
+        # Right: clock + date + HUD Window Controls
+        right_row = QHBoxLayout(); right_row.setSpacing(12)
+        
         right_col = QVBoxLayout(); right_col.setSpacing(2); right_col.setAlignment(Qt.AlignmentFlag.AlignRight)
         self._clock_lbl = QLabel("00:00:00")
-        self._clock_lbl.setFont(QFont("Courier New", 14, QFont.Weight.Bold))
+        self._clock_lbl.setFont(QFont("Courier New", 13, QFont.Weight.Bold))
         self._clock_lbl.setStyleSheet(f"color: {C.GOLD}; background: transparent;")
         self._clock_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         right_col.addWidget(self._clock_lbl)
@@ -1931,8 +1961,43 @@ class MainWindow(QMainWindow):
         self._date_lbl.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
         self._date_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         right_col.addWidget(self._date_lbl)
-        lay.addLayout(right_col, stretch=1)
+        right_row.addLayout(right_col)
 
+        # HUD Window Controls: Settings, Minimize, Maximize, Close
+        btn_box = QHBoxLayout()
+        btn_box.setSpacing(4)
+
+        def _win_btn(sym: str, tooltip: str, click_cb, hover_col=C.GOLD, w=26, h=24) -> QPushButton:
+            b = QPushButton(sym)
+            b.setToolTip(tooltip)
+            b.setFixedSize(w, h)
+            b.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent; color: {C.TEXT_MED};
+                    border: 1px solid {C.BORDER}; border-radius: 2px;
+                }}
+                QPushButton:hover {{
+                    color: {hover_col}; border: 1px solid {hover_col};
+                    background: {C.PANEL2};
+                }}
+            """)
+            b.clicked.connect(click_cb)
+            return b
+
+        self._btn_cfg = _win_btn("⚙", "Settings [CFG]", self._show_settings, C.STEEL)
+        self._btn_min = _win_btn("—", "Minimize", self.showMinimized, C.GOLD)
+        self._btn_max = _win_btn("□", "Maximize / Restore", self._toggle_maximize, C.GOLD)
+        self._btn_cls = _win_btn("✕", "Close J.A.R.V.I.S.", self._close_app, C.RED)
+
+        btn_box.addWidget(self._btn_cfg)
+        btn_box.addWidget(self._btn_min)
+        btn_box.addWidget(self._btn_max)
+        btn_box.addWidget(self._btn_cls)
+        right_row.addLayout(btn_box)
+
+        lay.addLayout(right_row, stretch=1)
         return w
 
     def _tick_clock(self):
@@ -2382,12 +2447,129 @@ class MainWindow(QMainWindow):
         if self.on_text_command:
             threading.Thread(target=self.on_text_command, args=(txt,), daemon=True).start()
 
-    # ── Fullscreen ────────────────────────────────────────────────────────────
+    # ── Fullscreen & Maximize ──────────────────────────────────────────────────
     def _toggle_fullscreen(self):
         if self.isFullScreen():
             self.showNormal()
         else:
             self.showFullScreen()
+
+    def _toggle_maximize(self):
+        if self.isMaximized():
+            self.showNormal()
+            self._btn_max.setText("□")
+        else:
+            self.showMaximized()
+            self._btn_max.setText("❐")
+
+    def _close_app(self):
+        """Clean shutdown with fallback safeguards."""
+        try:
+            QApplication.quit()
+        except Exception:
+            sys.exit(0)
+
+    # ── Frameless window drag & edge hit-testing resize ────────────────────────
+    def _hit_test_edge(self, pos) -> str | None:
+        if self.isMaximized() or self.isFullScreen():
+            return None
+        x = pos.x()
+        y = pos.y()
+        w = self.width()
+        h = self.height()
+        m = self._EDGE_MARGIN
+
+        on_left   = x <= m
+        on_right  = x >= w - m
+        on_top    = y <= m
+        on_bottom = y >= h - m
+
+        if on_top and on_left:     return "top_left"
+        if on_top and on_right:    return "top_right"
+        if on_bottom and on_left:  return "bottom_left"
+        if on_bottom and on_right: return "bottom_right"
+        if on_left:                return "left"
+        if on_right:               return "right"
+        if on_top:                 return "top"
+        if on_bottom:              return "bottom"
+        return None
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position().toPoint()
+            edge = self._hit_test_edge(pos)
+            if edge is not None:
+                self._resizing = True
+                self._resize_edge = edge
+                self._resize_start_geo = self.geometry()
+                self._resize_start_pos = event.globalPosition().toPoint()
+                event.accept()
+                return
+            elif pos.y() <= 54:
+                # Clicked within header bar -> window drag
+                self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        pos = event.position().toPoint()
+        gpos = event.globalPosition().toPoint()
+
+        if self._resizing and self._resize_start_geo and self._resize_start_pos:
+            dx = gpos.x() - self._resize_start_pos.x()
+            dy = gpos.y() - self._resize_start_pos.y()
+            geo = self._resize_start_geo
+
+            new_x = geo.x()
+            new_y = geo.y()
+            new_w = geo.width()
+            new_h = geo.height()
+
+            if "left" in self._resize_edge:
+                new_w = max(_MIN_W, geo.width() - dx)
+                new_x = geo.right() - new_w
+            elif "right" in self._resize_edge:
+                new_w = max(_MIN_W, geo.width() + dx)
+
+            if "top" in self._resize_edge:
+                new_h = max(_MIN_H, geo.height() - dy)
+                new_y = geo.bottom() - new_h
+            elif "bottom" in self._resize_edge:
+                new_h = max(_MIN_H, geo.height() + dy)
+
+            self.setGeometry(new_x, new_y, new_w, new_h)
+            event.accept()
+            return
+
+        if self._drag_pos is not None:
+            self.move(gpos - self._drag_pos)
+            event.accept()
+            return
+
+        # Update cursor on hover over edges
+        edge = self._hit_test_edge(pos)
+        if edge in ("top_left", "bottom_right"):
+            self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        elif edge in ("top_right", "bottom_left"):
+            self.setCursor(Qt.CursorShape.SizeBDiagCursor)
+        elif edge in ("left", "right"):
+            self.setCursor(Qt.CursorShape.SizeHorCursor)
+        elif edge in ("top", "bottom"):
+            self.setCursor(Qt.CursorShape.SizeVerCursor)
+        else:
+            self.unsetCursor()
+
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_pos = None
+        self._resizing = False
+        self._resize_edge = None
+        self._resize_start_geo = None
+        self._resize_start_pos = None
+        self.unsetCursor()
+        super().mouseReleaseEvent(event)
 
     # ── Resize ────────────────────────────────────────────────────────────────
     def resizeEvent(self, event):
@@ -2405,8 +2587,8 @@ class MainWindow(QMainWindow):
             self._boot_overlay.setGeometry(0, 0, cw.width(), cw.height())
 
     def closeEvent(self, event):
-        event.ignore()
-        self.hide()
+        event.accept()
+        QApplication.quit()
 
     # ── Config ────────────────────────────────────────────────────────────────
     def _check_config(self) -> bool:
@@ -2521,6 +2703,132 @@ class _RootShim:
         pass
 
 
+# ── Global QSS Stylesheet ─────────────────────────────────────────────────────
+def _build_global_stylesheet() -> str:
+    return f"""
+        /* ── Stark Industries HUD Global Theme ── */
+        QWidget {{
+            background-color: {C.BG};
+            color: {C.TEXT};
+            font-family: Arial, 'Segoe UI', sans-serif;
+            font-size: 8pt;
+        }}
+        
+        QMainWindow, QDialog {{
+            background-color: {C.BG};
+            border: 1px solid {C.GOLD_DIM};
+        }}
+        
+        /* Buttons */
+        QPushButton {{
+            background: {C.PANEL};
+            color: {C.GOLD};
+            border: 1px solid {C.BORDER};
+            border-radius: 2px;
+            padding: 4px 8px;
+            font-weight: bold;
+        }}
+        QPushButton:hover {{
+            background: {C.GOLD_GHO};
+            border: 1px solid {C.GOLD};
+            color: {C.WHITE};
+        }}
+        QPushButton:pressed {{
+            background: {C.DARK};
+            border: 1px solid {C.GOLD_DIM};
+        }}
+        QPushButton:disabled {{
+            background: {C.DARK};
+            color: {C.TEXT_DIM};
+            border: 1px solid {C.BORDER};
+        }}
+        
+        /* Line Edit & Text Edit */
+        QLineEdit, QTextEdit, QPlainTextEdit {{
+            background: #0A0B0D;
+            color: {C.WHITE};
+            border: 1px solid {C.BORDER};
+            border-radius: 2px;
+            padding: 3px 6px;
+            selection-background-color: {C.GOLD_DIM};
+            selection-color: {C.WHITE};
+        }}
+        QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {{
+            border: 1px solid {C.GOLD};
+        }}
+        
+        /* Sliders */
+        QSlider::groove:horizontal {{
+            height: 3px;
+            background: {C.BORDER};
+            border-radius: 1px;
+        }}
+        QSlider::sub-page:horizontal {{
+            background: {C.GOLD_DIM};
+            border-radius: 1px;
+        }}
+        QSlider::handle:horizontal {{
+            background: {C.GOLD};
+            width: 14px;
+            height: 14px;
+            margin: -6px 0;
+            border-radius: 7px;
+            border: 1px solid {C.WHITE};
+        }}
+        QSlider::handle:horizontal:hover {{
+            background: {C.WHITE};
+            border: 1px solid {C.GOLD};
+        }}
+        
+        /* Scrollbars */
+        QScrollBar:vertical {{
+            background: {C.DARK};
+            width: 6px;
+            border: none;
+            margin: 0px;
+        }}
+        QScrollBar::handle:vertical {{
+            background: {C.GOLD_DIM};
+            border-radius: 3px;
+            min-height: 20px;
+        }}
+        QScrollBar::handle:vertical:hover {{
+            background: {C.GOLD};
+        }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+            height: 0px;
+        }}
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+            background: none;
+        }}
+        
+        /* Tooltips */
+        QToolTip {{
+            background: {C.PANEL2};
+            color: {C.GOLD};
+            border: 1px solid {C.GOLD_DIM};
+            border-radius: 2px;
+            padding: 3px 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 8pt;
+        }}
+        
+        /* Progress Bars */
+        QProgressBar {{
+            background: {C.BAR_BG};
+            border: 1px solid {C.BORDER};
+            border-radius: 2px;
+            text-align: center;
+            color: {C.TEXT_MED};
+            font-size: 7pt;
+        }}
+        QProgressBar::chunk {{
+            background: {C.GOLD};
+            border-radius: 1px;
+        }}
+    """
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 class JarvisUI:
     """
@@ -2542,6 +2850,7 @@ class JarvisUI:
     def __init__(self, face_path: str = "", size=None):
         self._app = QApplication.instance() or QApplication(sys.argv)
         self._app.setStyle("Fusion")
+        self._app.setStyleSheet(_build_global_stylesheet())
         self._app.setQuitOnLastWindowClosed(False)
         self._win = MainWindow(face_path)
         self._win.show()

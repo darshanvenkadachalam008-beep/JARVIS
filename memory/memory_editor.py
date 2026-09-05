@@ -46,30 +46,30 @@ MEMORY_PATH    = _base_dir() / "memory" / "long_term.json"
 SUMMARIES_PATH = _base_dir() / "memory" / "conversation_summaries.json"
 
 # ── Colour palette (mirrors ui.py C class) ───────────────────────────────────
-_BG       = "#00060a"
-_PANEL    = "#010d14"
-_BORDER   = "#0d3347"
-_BORDER_B = "#1a5c7a"
-_PRI      = "#00d4ff"
-_PRI_DIM  = "#007a99"
-_PRI_GHO  = "#001f2e"
-_ACC      = "#ff6b00"
-_RED      = "#ff3355"
-_GREEN    = "#00ff88"
-_TEXT     = "#8ffcff"
-_TEXT_DIM = "#3a8a9a"
-_TEXT_MED = "#5ab8cc"
-_WHITE    = "#d8f8ff"
+_BG       = "#0E0F11"
+_PANEL    = "#131519"
+_BORDER   = "#2A2D33"
+_BORDER_B = "#3A3D45"
+_PRI      = "#C8922A"         # Stark Gold
+_PRI_DIM  = "#7A5618"         # Dim Gold
+_PRI_GHO  = "#1A1208"         # Ghost Gold
+_ACC      = "#4A7FA5"         # Steel Blue
+_RED      = "#C24040"         # Security Red
+_GREEN    = "#3CB97A"         # Emerald Green
+_TEXT     = "#C8C0A8"         # Warm off-white
+_TEXT_DIM = "#6A6055"         # Dim text
+_TEXT_MED = "#9A9080"         # Medium text
+_WHITE    = "#E8E0D0"         # Bright text
 
 _CAT_COLOURS = {
-    "identity":      "#00d4ff",
-    "preferences":   "#ffcc00",
-    "projects":      "#00ff88",
-    "relationships": "#ff9900",
-    "wishes":        "#cc88ff",
-    "habits":        "#44ddff",
-    "goals":         "#ff6644",
-    "notes":         "#8ffcff",
+    "identity":      "#C8922A",
+    "preferences":   "#4A7FA5",
+    "projects":      "#3CB97A",
+    "relationships": "#C2587A",
+    "wishes":        "#C8922A",
+    "habits":        "#4A7FA5",
+    "goals":         "#C24040",
+    "notes":         "#9A9080",
 }
 
 
@@ -210,8 +210,8 @@ class MemoryEditorOverlay(QWidget):
 
         # ── Header ────────────────────────────────────────────────────────
         hdr = QHBoxLayout()
-        title = QLabel("◈  JARVIS MEMORY BANK")
-        title.setFont(QFont("Courier New", 13, QFont.Weight.Bold))
+        title = QLabel("◈  J.A.R.V.I.S. MEMORY BANK  //  SECURE STORE")
+        title.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
         title.setStyleSheet(f"color: {_PRI}; background: transparent;")
         hdr.addWidget(title)
         hdr.addStretch()
@@ -281,7 +281,7 @@ class MemoryEditorOverlay(QWidget):
         root.addWidget(sep2)
 
         footer = QHBoxLayout()
-        hint = QLabel('Say "JARVIS, search memory for…" or "forget my preference for…"')
+        hint = QLabel('Say "Jarvis, recall our notes on..." or "Update my preferences for...", sir.')
         hint.setFont(QFont("Courier New", 7))
         hint.setStyleSheet(f"color: {_TEXT_DIM}; background: transparent;")
         footer.addWidget(hint)
