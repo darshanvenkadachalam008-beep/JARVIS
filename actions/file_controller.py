@@ -116,13 +116,13 @@ def delete_file(path: str, confirm: bool = True, pin: str = "") -> str:
 
             send2trash.send2trash(str(target))
             return f"Moved to Recycle Bin: {target.name}"
-        except ImportError:
+        except (ImportError, AttributeError):
             pass
 
         # Fallback: permanent, unrecoverable delete — PIN-gated.
         try:
             from core.access_control import AccessControl
-            ac = AccessControl()
+            ac = AccessControl(bridge=AccessControl.get_default_bridge())
             if not ac.is_configured():
                 return (
                     "Permanent delete refused: send2trash is unavailable and no "

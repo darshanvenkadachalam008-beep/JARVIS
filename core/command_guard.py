@@ -368,7 +368,7 @@ def guard(
         ac = access_control
         if ac is None:
             from core.access_control import AccessControl
-            ac = AccessControl()
+            ac = AccessControl(bridge=AccessControl.get_default_bridge())
         if not ac.is_configured():
             raise PermissionError("[SYSTEM LEVEL] Refused: Security PIN is not configured.")
         if not ac.verify_pin(pin, action=f"command_guard:{action_name or 'system_level'}"):
@@ -387,7 +387,7 @@ def guard(
         ac = access_control
         if ac is None:
             from core.access_control import AccessControl
-            ac = AccessControl()
+            ac = AccessControl(bridge=AccessControl.get_default_bridge())
         if not ac.is_configured():
             raise PermissionError("[DESTRUCTIVE] Refused: Security PIN is not configured.")
         if not ac.verify_pin(pin, action=f"command_guard:{action_name or 'destructive'}"):

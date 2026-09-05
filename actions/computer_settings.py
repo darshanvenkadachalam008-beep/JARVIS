@@ -661,7 +661,7 @@ def computer_settings(
         # fail, is written to the tamper-evident audit log automatically.
         try:
             from core.access_control import AccessControl
-            ac = AccessControl()
+            ac = AccessControl(bridge=AccessControl.get_default_bridge())
             pin = str(params.get("pin", ""))
             if not ac.is_configured():
                 return (

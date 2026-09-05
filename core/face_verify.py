@@ -126,7 +126,7 @@ class FaceVerifier:
     def _get_access_control(self):
         if self._access_control is None:
             from core.access_control import AccessControl
-            self._access_control = AccessControl()
+            self._access_control = AccessControl(bridge=AccessControl.get_default_bridge())
         return self._access_control
 
     def _verify_pin_gate(self, pin: Optional[str], action: str) -> None:
@@ -381,7 +381,7 @@ class FaceVerifier:
         # Note: accepted strictly reflects identity recognition (face_found AND enrolled AND confidence <= threshold).
         # Anti-spoofing signal is reported independently via spoof_suspected / spoof_score.
         accepted = (label == OWNER_LABEL) and (confidence <= self.threshold)
-
+        
         # Cluster tracking in Sentinel AnomalyDetector
         try:
             from sentinel.anomaly.detector import AnomalyDetector
@@ -396,7 +396,6 @@ class FaceVerifier:
             print(f"[FaceVerify] AnomalyDetector cluster tracking update skipped: {e}")
 
         self._audit.append("face_identify", {
-
             "action": action,
             "result": "accepted" if accepted else "rejected",
             "confidence": round(float(confidence), 2),
@@ -413,4 +412,4 @@ class FaceVerifier:
             spoof_suspected=spoof_suspected,
             spoof_score=round(spoof_score, 2),
             reason="" if accepted else "below_match_quality",
-        )
+        )

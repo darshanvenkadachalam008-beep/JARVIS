@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -86,6 +87,20 @@ class AccessControl:
     Facade maintaining full backward compatibility with core access control call sites
     while delegating all identity persistence, locking, and hashing to sentinel/auth.
     """
+    _default_bridge: Optional[Any] = None
+    _default_bridge_lock = threading.Lock()
+
+    @classmethod
+    def set_default_bridge(cls, bridge: Optional[Any]) -> None:
+        """Sets the process-wide default ProactiveBridge for AccessControl instances."""
+        with cls._default_bridge_lock:
+            cls._default_bridge = bridge
+
+    @classmethod
+    def get_default_bridge(cls) -> Optional[Any]:
+        """Gets the process-wide default ProactiveBridge for AccessControl instances."""
+        with cls._default_bridge_lock:
+            return cls._default_bridge
 
     def __init__(self, path: Optional[Path] = None, audit_log_path: Optional[Path] = None, bridge: Optional[Any] = None):
         if path is not None:
@@ -102,7 +117,7 @@ class AccessControl:
 
         self._audit = AuditLog(path=audit_log_path or default_audit)
         self._engine = AuthEngine(auth_dir=self.auth_dir)
-        self._bridge = bridge
+        self._bridge = bridge if bridge is not None else self.get_default_bridge()
 
         # One-time lazy migration of legacy memory/access_control.json if uninitialized
         if not self._engine.is_initialized() and self.legacy_path.exists():

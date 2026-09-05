@@ -1531,6 +1531,13 @@ class JarvisTrayApp:
         if self._mobile:
             self._proactive_bridge.set_mobile_sink(lambda msg, jpeg: self._on_intruder_alert(msg, jpeg))
 
+        # Wire AccessControl default bridge for CRITICAL wrong-PIN security alerts
+        try:
+            from core.access_control import AccessControl
+            AccessControl.set_default_bridge(self._proactive_bridge)
+        except Exception:
+            pass
+
         # Wire EmergencyWipeController singleton to ProactiveBridge for CRITICAL blocked wipe alerts
         try:
             from core.sentinel_extras import EmergencyWipeController

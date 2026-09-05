@@ -145,7 +145,7 @@ def dispatch_security_alert(
                 message=full_message,
                 priority=ProactivePriority.CRITICAL,
                 ttl_seconds=86400.0,
-                dedup_key=f"sec_alert:{trigger_type}:{time_str}",
+                dedup_key=f"sec_alert:{trigger_type}:{(details or {}).get('action', '')}:{now_dt.strftime('%Y%m%d_%H%M%S_%f')}",
                 data=event_data,
                 channels={"audit", "voice", "ui", "mobile", "telegram"},
             )

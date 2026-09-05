@@ -299,9 +299,96 @@ class TestRealCallerAlertIntegration(unittest.TestCase):
             self.assertEqual(event.data["trigger_type"], "jarvis_voice_auth_failure")
             self.assertEqual(event.data["details"]["action"], "wake_word_unenrolled_voice")
 
+    def test_computer_settings_caller_wrong_pin_dispatches_alert(self):
+        """Asserts computer_settings dangerous action with wrong PIN dispatches CRITICAL alert."""
+        from actions.computer_settings import computer_settings
+        mock_bridge = MagicMock(spec=ProactiveBridge)
+
+        AccessControl.set_default_bridge(mock_bridge)
+        ac = AccessControl()
+        ac.set_pin("123456")
+
+        # Run computer_settings shutdown action with incorrect PIN
+        res = computer_settings(
+            parameters={"action": "shutdown", "confirmed": "yes", "pin": "WRONG_PIN"}
+        )
+        self.assertIn("refused: PIN missing or incorrect", res)
+        self.assertEqual(mock_bridge.dispatch.call_count, 1)
+        event = mock_bridge.dispatch.call_args[0][0]
+        self.assertEqual(event.priority, ProactivePriority.CRITICAL)
+        self.assertEqual(event.data["trigger_type"], "jarvis_pin_failure")
+        self.assertEqual(event.data["details"]["action"], "computer_settings:shutdown")
+        self.assertEqual(event.data["details"]["result"], "denied_wrong_pin")
+
+    def test_file_controller_caller_wrong_pin_dispatches_alert(self):
+        """Asserts file_controller permanent delete with wrong PIN dispatches CRITICAL alert."""
+        from actions.file_controller import file_controller
+        mock_bridge = MagicMock(spec=ProactiveBridge)
+
+        AccessControl.set_default_bridge(mock_bridge)
+        ac = AccessControl()
+        ac.set_pin("123456")
+
+        with tempfile.TemporaryDirectory() as td:
+            dummy_file = Path(td) / "secret.txt"
+            dummy_file.write_text("classified data")
+
+            with patch.dict("sys.modules", {"send2trash": None}):
+                res = file_controller({"action": "delete", "path": str(dummy_file), "pin": "000000"})
+                self.assertIn("Permanent delete refused: PIN missing or incorrect", res)
+                self.assertEqual(mock_bridge.dispatch.call_count, 1)
+                event = mock_bridge.dispatch.call_args[0][0]
+                self.assertEqual(event.priority, ProactivePriority.CRITICAL)
+                self.assertEqual(event.data["trigger_type"], "jarvis_pin_failure")
+                self.assertEqual(event.data["details"]["action"], "file_controller:permanent_delete")
+                self.assertEqual(event.data["details"]["result"], "denied_wrong_pin")
+
+    def test_command_guard_caller_wrong_pin_dispatches_alert(self):
+        """Asserts command_guard destructive command with wrong PIN dispatches CRITICAL alert."""
+        from core.command_guard import guard
+        mock_bridge = MagicMock(spec=ProactiveBridge)
+
+        AccessControl.set_default_bridge(mock_bridge)
+        ac = AccessControl()
+        ac.set_pin("123456")
+
+        with self.assertRaises(PermissionError) as ctx:
+            guard("shutdown /s /t 0", confirmed=True, pin="BAD_PIN")
+        self.assertIn("PIN verification failed", str(ctx.exception))
+        self.assertEqual(mock_bridge.dispatch.call_count, 1)
+        event = mock_bridge.dispatch.call_args[0][0]
+        self.assertEqual(event.priority, ProactivePriority.CRITICAL)
+        self.assertEqual(event.data["trigger_type"], "jarvis_pin_failure")
+        self.assertEqual(event.data["details"]["action"], "command_guard:system_level")
+        self.assertEqual(event.data["details"]["result"], "denied_wrong_pin")
+
+    def test_face_verify_caller_wrong_pin_dispatches_alert(self):
+        """Asserts face_verify pin-gate violation with wrong PIN dispatches CRITICAL alert."""
+        from core.face_verify import FaceVerifier
+        mock_bridge = MagicMock(spec=ProactiveBridge)
+
+        AccessControl.set_default_bridge(mock_bridge)
+        ac = AccessControl()
+        ac.set_pin("123456")
+
+        with patch.object(AccessControl, "is_tampered", return_value=False):
+            fv = FaceVerifier()
+            with self.assertRaises(PermissionError) as ctx:
+                fv._verify_pin_gate(pin="WRONG_PIN", action="face_enroll")
+            self.assertIn("Invalid Security PIN or lockout active", str(ctx.exception))
+            self.assertEqual(mock_bridge.dispatch.call_count, 1)
+            event = mock_bridge.dispatch.call_args[0][0]
+            self.assertEqual(event.priority, ProactivePriority.CRITICAL)
+            self.assertEqual(event.data["trigger_type"], "jarvis_pin_failure")
+            self.assertEqual(event.data["details"]["action"], "face_enroll")
+            self.assertEqual(event.data["details"]["result"], "denied_wrong_pin")
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
 
 
 

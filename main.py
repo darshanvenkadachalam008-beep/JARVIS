@@ -1701,6 +1701,13 @@ class JarvisLive:
         except Exception as _tge:
             print(f"[ProactiveBridge] Telegram sink initialization skipped: {_tge}")
 
+        # Wire AccessControl default bridge for CRITICAL wrong-PIN security alerts
+        try:
+            from core.access_control import AccessControl
+            AccessControl.set_default_bridge(self._proactive_bridge)
+        except Exception as _ace:
+            print(f"[AccessControl] Default bridge wiring skipped: {_ace}")
+
         # Wire EmergencyWipeController singleton to ProactiveBridge for CRITICAL blocked wipe alerts
         try:
             from core.sentinel_extras import EmergencyWipeController
