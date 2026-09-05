@@ -63,6 +63,7 @@ sentence-transformers
 # ── Mobile companion server (mobile_server.py) ──────────────────────────
 websockets
 firebase-admin
+qrcode[pil]>=7.4.2
 
 # ── System / Windows integration ────────────────────────────────────────
 psutil
