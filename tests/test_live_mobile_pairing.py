@@ -55,6 +55,7 @@ async def test_live_mobile_server_websocket_roundtrip():
     """
     wake_events = []
     command_events = []
+    call_events = []
 
     def on_wake():
         wake_events.append(time.time())
@@ -62,9 +63,12 @@ async def test_live_mobile_server_websocket_roundtrip():
     def on_cmd(text: str):
         command_events.append(text)
 
+    def on_call(call_info: dict):
+        call_events.append(call_info)
+
     # 1. Start real MobileServer background threads
     server = MobileServer()
-    server.set_callbacks(on_command=on_cmd, on_wake=on_wake)
+    server.set_callbacks(on_command=on_cmd, on_wake=on_wake, on_incoming_call=on_call)
     server.start()
     await asyncio.sleep(1.0) # Allow websockets.serve to bind 0.0.0.0:8081
 
@@ -103,7 +107,22 @@ async def test_live_mobile_server_websocket_roundtrip():
             await asyncio.sleep(0.3)
             assert "JARVIS, report status." in command_events
 
-            # Step 7: Broadcast from Server to Client
+            # Step 7: Incoming Call Dispatch
+            incoming_call_msg = {
+                "type": "incoming_call",
+                "data": json.dumps({
+                    "number": "+15551234567",
+                    "name": "Tony Stark",
+                    "timestamp": 1717000000
+                })
+            }
+            await ws.send(json.dumps(incoming_call_msg))
+            await asyncio.sleep(0.3)
+            assert len(call_events) == 1
+            assert call_events[0]["number"] == "+15551234567"
+            assert call_events[0]["name"] == "Tony Stark"
+
+            # Step 8: Broadcast from Server to Client
             server._hub.broadcast("jarvis", "All systems operational.")
             broadcast_msg = await _recv_type(ws, "jarvis")
             assert broadcast_msg["data"] == "All systems operational."

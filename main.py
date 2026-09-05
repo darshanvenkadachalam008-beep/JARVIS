@@ -1773,12 +1773,25 @@ class JarvisLive:
                     asyncio.run_coroutine_threadsafe(self._inject_text(cmd), self._loop)
                 except Exception as e:
                     print(f"[Mobile] Error injecting command: {e}")
+            def _on_mobile_call(call_data: dict):
+                try:
+                    num = call_data.get("number", "Unknown")
+                    name = call_data.get("name", "")
+                    caller = name if name else num
+                    msg = f"Sir, incoming call from {caller}."
+                    print(f"[JARVIS] 📞 Incoming call announcement: {msg}")
+                    if self.ui:
+                        self.ui.write_log(f"CALL: Incoming call from {caller} ({num})")
+                    self.speak(msg)
+                except Exception as e:
+                    print(f"[Mobile] Error announcing incoming call: {e}")
             self._mobile.set_callbacks(
                 on_command = _on_mobile_cmd,
                 on_wake    = self._on_wake_word,
                 on_intercom_start = self._on_intercom_start,
                 on_intercom_stop  = self._on_intercom_stop,
                 on_intercom_audio = self._on_intercom_audio_received,
+                on_incoming_call  = _on_mobile_call,
             )
             if hasattr(self, "_proactive_bridge") and self._proactive_bridge:
                 self._proactive_bridge.set_mobile_sink(lambda msg, jpeg: self._mobile.notify(msg) if self._mobile else None)
