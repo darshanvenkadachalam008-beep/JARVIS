@@ -1785,6 +1785,17 @@ class JarvisLive:
                     self.speak(msg)
                 except Exception as e:
                     print(f"[Mobile] Error announcing incoming call: {e}")
+            def _on_mobile_sms(sms_data: dict):
+                try:
+                    sender = sms_data.get("sender", "Unknown")
+                    body = sms_data.get("body", "")
+                    # Privacy: redact message content from console/file logs
+                    print(f"[JARVIS] 💬 Incoming SMS from {sender} ({len(body)} chars)")
+                    if self.ui:
+                        self.ui.write_log(f"SMS: New message from {sender} ({len(body)} chars)")
+                    self.speak(f"Sir, new message from {sender}: {body}")
+                except Exception as e:
+                    print(f"[Mobile] Error announcing incoming SMS: {e}")
             self._mobile.set_callbacks(
                 on_command = _on_mobile_cmd,
                 on_wake    = self._on_wake_word,
@@ -1792,6 +1803,7 @@ class JarvisLive:
                 on_intercom_stop  = self._on_intercom_stop,
                 on_intercom_audio = self._on_intercom_audio_received,
                 on_incoming_call  = _on_mobile_call,
+                on_incoming_sms   = _on_mobile_sms,
             )
             if hasattr(self, "_proactive_bridge") and self._proactive_bridge:
                 self._proactive_bridge.set_mobile_sink(lambda msg, jpeg: self._mobile.notify(msg) if self._mobile else None)

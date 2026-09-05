@@ -1507,6 +1507,7 @@ class JarvisTrayApp:
             on_intercom_stop  = self._on_intercom_stop,
             on_intercom_audio = self._on_intercom_audio_received,
             on_incoming_call  = self._on_mobile_incoming_call,
+            on_incoming_sms   = self._on_mobile_incoming_sms,
         )
         # ── Phase 4: Proactive Bridge (Daemon-level unified push) ─────────────
         from core.proactive_bridge import ProactiveBridge
@@ -1870,6 +1871,19 @@ class JarvisTrayApp:
                 self._session.speak(msg)
         except Exception as e:
             print(f"[Mobile] Error announcing incoming call: {e}")
+
+    def _on_mobile_incoming_sms(self, sms_data: dict):
+        try:
+            sender = sms_data.get("sender", "Unknown")
+            body = sms_data.get("body", "")
+            # Privacy: redact message content from console/file logs
+            print(f"[JARVIS Service] 💬 Incoming SMS from {sender} ({len(body)} chars)")
+            if self._ui:
+                self._ui.write_log(f"SMS: New message from {sender} ({len(body)} chars)")
+            if self._session:
+                self._session.speak(f"Sir, new message from {sender}: {body}")
+        except Exception as e:
+            print(f"[Mobile] Error announcing incoming SMS: {e}")
 
     def _on_mobile_command(self, text: str):
         """Called when a command arrives from the mobile companion app.

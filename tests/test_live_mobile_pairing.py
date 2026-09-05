@@ -56,6 +56,7 @@ async def test_live_mobile_server_websocket_roundtrip():
     wake_events = []
     command_events = []
     call_events = []
+    sms_events = []
 
     def on_wake():
         wake_events.append(time.time())
@@ -66,9 +67,17 @@ async def test_live_mobile_server_websocket_roundtrip():
     def on_call(call_info: dict):
         call_events.append(call_info)
 
+    def on_sms(sms_info: dict):
+        sms_events.append(sms_info)
+
     # 1. Start real MobileServer background threads
     server = MobileServer()
-    server.set_callbacks(on_command=on_cmd, on_wake=on_wake, on_incoming_call=on_call)
+    server.set_callbacks(
+        on_command=on_cmd,
+        on_wake=on_wake,
+        on_incoming_call=on_call,
+        on_incoming_sms=on_sms,
+    )
     server.start()
     await asyncio.sleep(1.0) # Allow websockets.serve to bind 0.0.0.0:8081
 
@@ -122,7 +131,29 @@ async def test_live_mobile_server_websocket_roundtrip():
             assert call_events[0]["number"] == "+15551234567"
             assert call_events[0]["name"] == "Tony Stark"
 
-            # Step 8: Broadcast from Server to Client
+            # Step 8: Incoming SMS Dispatch
+            incoming_sms_msg = {
+                "type": "incoming_sms",
+                "data": json.dumps({
+                    "sender": "Pepper Potts",
+                    "body": "Meeting at 3pm sharp.",
+                    "timestamp": 1717000001
+                })
+            }
+            await ws.send(json.dumps(incoming_sms_msg))
+            await asyncio.sleep(0.3)
+            assert len(sms_events) == 1
+            assert sms_events[0]["sender"] == "Pepper Potts"
+            assert sms_events[0]["body"] == "Meeting at 3pm sharp."
+
+            # Step 9: Canned SMS Send Command from Server to Mobile Client
+            server.send_sms("+15551234567", "Acknowledged, sir.")
+            send_sms_msg = await _recv_type(ws, "send_sms")
+            sms_payload = json.loads(send_sms_msg["data"])
+            assert sms_payload["recipient"] == "+15551234567"
+            assert sms_payload["body"] == "Acknowledged, sir."
+
+            # Step 10: Broadcast from Server to Client
             server._hub.broadcast("jarvis", "All systems operational.")
             broadcast_msg = await _recv_type(ws, "jarvis")
             assert broadcast_msg["data"] == "All systems operational."

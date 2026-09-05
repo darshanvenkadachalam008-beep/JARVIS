@@ -585,13 +585,15 @@ class _WSHub:
         self._on_intercom_stop:  Optional[Callable[[str], None]] = None  # callback(ip) → stop mic/speaker
         self._on_intercom_audio: Optional[Callable[[bytes], None]] = None  # callback(pcm_bytes) → play on PC
         self._on_incoming_call:  Optional[Callable[[dict], None]]  = None  # callback(call_info) → speak / announce
+        self._on_incoming_sms:   Optional[Callable[[dict], None]]  = None  # callback(sms_info) → speak / announce
         self._intercom_clients: Set = set()  # subset of self._clients currently in an intercom session
         global _ACTIVE_HUB
         _ACTIVE_HUB = self
 
     def set_callbacks(self, on_command: Callable, on_wake: Callable, on_token_register: Optional[Callable] = None,
                        on_intercom_start: Optional[Callable] = None, on_intercom_stop: Optional[Callable] = None,
-                       on_intercom_audio: Optional[Callable] = None, on_incoming_call: Optional[Callable] = None):
+                       on_intercom_audio: Optional[Callable] = None, on_incoming_call: Optional[Callable] = None,
+                       on_incoming_sms: Optional[Callable] = None):
         self._on_cmd   = on_command
         self._on_wake  = on_wake
         self._on_token = on_token_register
@@ -599,6 +601,12 @@ class _WSHub:
         self._on_intercom_stop  = on_intercom_stop
         self._on_intercom_audio = on_intercom_audio
         self._on_incoming_call  = on_incoming_call
+        self._on_incoming_sms   = on_incoming_sms
+
+    def send_sms(self, recipient: str, body: str):
+        """Dispatches a send_sms command to connected mobile companion client."""
+        payload = json.dumps({"recipient": recipient, "body": body})
+        self.broadcast("send_sms", payload)
 
     def set_loop(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop
@@ -772,6 +780,26 @@ class _WSHub:
                             self._on_incoming_call(call_info)
                         except Exception as e:
                             print(f"[Mobile] ⚠️ incoming call handler error: {e}")
+                elif kind == "incoming_sms":
+                    raw_data = msg.get("data", "")
+                    sms_info = {}
+                    if isinstance(raw_data, str) and raw_data.strip():
+                        try:
+                            sms_info = json.loads(raw_data)
+                        except Exception:
+                            sms_info = {"sender": "Unknown", "body": raw_data}
+                    elif isinstance(raw_data, dict):
+                        sms_info = raw_data
+
+                    sender = sms_info.get("sender", "Unknown")
+                    body = sms_info.get("body", "")
+                    # Privacy: redact SMS body in console logs — log sender and length only
+                    print(f"[Mobile] 💬 Incoming SMS from {sender} ({len(body)} chars, from {ip})")
+                    if self._on_incoming_sms:
+                        try:
+                            self._on_incoming_sms(sms_info)
+                        except Exception as e:
+                            print(f"[Mobile] ⚠️ incoming SMS handler error: {e}")
                 elif kind == "wipe_request":
                     try:
                         from core.sentinel_extras import EmergencyWipeController
@@ -1896,7 +1924,7 @@ class MobileServer:
 
     def set_callbacks(self, on_command, on_wake, on_token_register=None,
                        on_intercom_start=None, on_intercom_stop=None, on_intercom_audio=None,
-                       on_incoming_call=None):
+                       on_incoming_call=None, on_incoming_sms=None):
         def _save_and_forward(token: str):
             self._fcm.save_token(token)
             if on_token_register:
@@ -1904,8 +1932,14 @@ class MobileServer:
                 except Exception: pass
         self._hub.set_callbacks(on_command, on_wake, _save_and_forward,
                                  on_intercom_start, on_intercom_stop, on_intercom_audio,
-                                 on_incoming_call)
+                                 on_incoming_call, on_incoming_sms)
         _HTTPHandler._command_cb = on_command
+
+    def send_sms(self, recipient: str, body: str):
+        """Sends a canned SMS reply through the connected mobile companion app.
+        Privacy: logs recipient and length only; message text is redacted from logs."""
+        print(f"[Mobile] 📤 Dispatched canned SMS to {recipient} ({len(body)} chars)")
+        self._hub.send_sms(recipient, body)
 
     def broadcast_intercom_audio(self, pcm_bytes: bytes):
         """Streams a chunk of PC mic audio to the phone during an active
