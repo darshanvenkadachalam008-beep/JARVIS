@@ -25,7 +25,8 @@ import tempfile
 from pathlib import Path
 from datetime import datetime
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 
 def _get_api_key() -> str:
@@ -34,9 +35,27 @@ def _get_api_key() -> str:
         return json.load(f)["gemini_api_key"]
 
 
+class _GenaiModelWrapper:
+    def __init__(self, model_name: str = "gemini-2.5-flash"):
+        self.model_name = model_name
+        self.client = genai.Client(api_key=_get_api_key())
+
+    def generate_content(self, contents):
+        converted = []
+        raw_list = contents if isinstance(contents, list) else [contents]
+        for item in raw_list:
+            if isinstance(item, dict) and "mime_type" in item and "data" in item:
+                converted.append(types.Part.from_bytes(data=item["data"], mime_type=item["mime_type"]))
+            else:
+                converted.append(item)
+        return self.client.models.generate_content(
+            model=self.model_name,
+            contents=converted,
+        )
+
+
 def _gemini_client():
-    genai.configure(api_key=_get_api_key())
-    return genai.GenerativeModel("gemini-2.5-flash")
+    return _GenaiModelWrapper("gemini-2.5-flash")
 
 
 def _detect_type(path: Path) -> str:

@@ -56,9 +56,10 @@ def mock_wipe_controller(tmp_path, mock_trash):
     target_file.write_text("classified data", encoding="utf-8")
     auth_dir = tmp_path / "auth"
     from sentinel.anomaly.detector import AnomalyDetector
-    AnomalyDetector(auth_dir=auth_dir).seed_initial_enrollment()
-    controller = EmergencyWipeController(wipe_paths=[str(target_file)])
-    return controller, target_file, mock_trash
+    with patch.object(AnomalyDetector, "get_current_network_identity", return_value="wifi:TEST_TRUSTED_NET"):
+        AnomalyDetector(auth_dir=auth_dir).seed_initial_enrollment()
+        controller = EmergencyWipeController(wipe_paths=[str(target_file)])
+        yield controller, target_file, mock_trash
 
 
 

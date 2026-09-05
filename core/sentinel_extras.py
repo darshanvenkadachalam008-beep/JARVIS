@@ -198,9 +198,8 @@ def gemini_threat_analysis(recent_events: list, api_key: str) -> Optional[str]:
     if not api_key or not recent_events:
         return None
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        from google import genai
+        client = genai.Client(api_key=api_key)
         lines = "\n".join(
             f"- {e.get('ts')}: {e.get('event_type')} — {e.get('title')}"
             for e in recent_events
@@ -213,7 +212,10 @@ def gemini_threat_analysis(recent_events: list, api_key: str) -> Optional[str]:
             "together). If nothing stands out, say so plainly. No preamble.\n\n"
             f"{lines}"
         )
-        result = model.generate_content(prompt)
+        result = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
         return (result.text or "").strip()[:500]
     except Exception as e:
         print(f"[Sentinel] Gemini analysis error: {e}")

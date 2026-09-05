@@ -208,16 +208,18 @@ def _compose_text_gemini(sections: dict, api_key: str) -> Optional[str]:
     """Optional richer narration via the same Gemini key the rest of the app
     already uses. Falls back to the templated version on any failure."""
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        from google import genai
+        client = genai.Client(api_key=api_key)
         prompt = (
             "You are a personal assistant giving a short spoken morning briefing. "
             "In 3-5 natural sentences, summarize this data for the user. Be warm but "
             "concise, and if there's a security concern, mention it plainly and first.\n\n"
             f"Data: {json.dumps(sections, default=str)}"
         )
-        resp = model.generate_content(prompt)
+        resp = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
         text = (resp.text or "").strip()
         return text or None
     except Exception as e:

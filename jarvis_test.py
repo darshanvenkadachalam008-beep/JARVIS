@@ -116,7 +116,7 @@ check("Google Calendar credentials  [optional]",
 section("4 · PYTHON PACKAGES")
 # ══════════════════════════════════════════════════════════
 required_pkgs = [
-    ("google.generativeai",       "google-generativeai",      True),
+    ("google.genai",              "google-genai",             True),
     ("sounddevice",               "sounddevice",              True),
     ("numpy",                     "numpy",                    True),
     ("win32api",                  "pywin32",                  True),   # pywin32 installs as win32api/win32gui/etc

@@ -37,9 +37,9 @@ def _get_api_key() -> str:
 
 
 def _get_gemini(model: str = GEMINI_MODEL):
-    import google.generativeai as genai
-    genai.configure(api_key=_get_api_key())
-    return genai.GenerativeModel(model)
+    from google import genai
+    client = genai.Client(api_key=_get_api_key())
+    return (client, model)
 
 
 # Hard ceiling on a single Gemini call. Without this, a stalled network
@@ -49,9 +49,14 @@ def _get_gemini(model: str = GEMINI_MODEL):
 _GEMINI_TIMEOUT_S = 60
 
 
-def _generate(model, prompt: str):
-    """Wrapper around model.generate_content() with a bounded timeout."""
-    return model.generate_content(prompt, request_options={"timeout": _GEMINI_TIMEOUT_S})
+def _generate(model_tuple, prompt: str):
+    """Wrapper around client.models.generate_content() with a bounded timeout."""
+    client, model_name = model_tuple
+    return client.models.generate_content(
+        model=model_name,
+        contents=prompt,
+        config={"http_options": {"timeout": _GEMINI_TIMEOUT_S}},
+    )
 
 
 def _clean_code(text: str) -> str:

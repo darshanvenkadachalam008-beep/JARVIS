@@ -25,9 +25,9 @@ def _get_api_key() -> str:
 
 
 def _get_model(model_name: str):
-    import google.generativeai as genai
-    genai.configure(api_key=_get_api_key())
-    return genai.GenerativeModel(model_name)
+    from google import genai
+    client = genai.Client(api_key=_get_api_key())
+    return (client, model_name)
 
 
 # Same protection as actions/code_helper.py — an unbounded Gemini call can
@@ -36,9 +36,14 @@ def _get_model(model_name: str):
 _GEMINI_TIMEOUT_S = 60
 
 
-def _generate(model, prompt: str):
-    """Wrapper around model.generate_content() with a bounded timeout."""
-    return model.generate_content(prompt, request_options={"timeout": _GEMINI_TIMEOUT_S})
+def _generate(model_tuple, prompt: str):
+    """Wrapper around client.models.generate_content() with a bounded timeout."""
+    client, model_name = model_tuple
+    return client.models.generate_content(
+        model=model_name,
+        contents=prompt,
+        config={"http_options": {"timeout": _GEMINI_TIMEOUT_S}},
+    )
 
 
 def _strip_fences(text: str) -> str:

@@ -126,10 +126,12 @@ class AdaAgent(BaseAgent):
         # Fallback: Gemini
         try:
             api_key = self._load_api_key()
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            model    = genai.GenerativeModel("gemini-2.5-flash-lite")
-            response = model.generate_content(prompt)
+            from google import genai
+            client   = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash-lite",
+                contents=prompt,
+            )
             return response.text.strip()
         except Exception as e:
             return f"[Draft placeholder — LLM unavailable: {e}]\n\nTopic: {topic}\nPlatform: {platform}"
