@@ -391,6 +391,11 @@ _STATE_THEMES: dict[str, dict[str, Any]] = {
 
 _HOLO_SPEED = {k: v["speed"] for k, v in _STATE_THEMES.items()}
 
+_DEGREE_TICKS = [
+    (deg, math.cos(math.radians(deg)), math.sin(math.radians(deg)), deg % 90 == 0, deg % 30 == 0)
+    for deg in range(0, 360, 10)
+]
+
 
 # ── Rotating hologram (centre panel — replaces video) ────────────────────────
 class HologramCanvas(QWidget):
@@ -416,6 +421,10 @@ class HologramCanvas(QWidget):
         self._blink      = True
         self._blink_tick = 0
         self._rot        = 0.0
+
+        # Cached background hex grid geometry
+        self._cached_hex_pixmap: Optional[QPixmap] = None
+        self._cached_hex_key: tuple = ()
 
         # HUD Reticle, Radar & Chrome state
         self._reticle_rot_outer = 0.0
@@ -559,6 +568,51 @@ class HologramCanvas(QWidget):
                 pt.update(self._new_particle())
                 pt["y"] = 1.05
 
+    def _get_hex_grid_pixmap(self, w: int, h: int, primary_col: str, dim: float) -> QPixmap:
+        """Cached pre-rendered hex grid background — avoids allocating 255 QPainterPaths per frame."""
+        key = (w, h, primary_col, int(dim * 100))
+        if self._cached_hex_pixmap is not None and self._cached_hex_key == key:
+            return self._cached_hex_pixmap
+
+        pix = QPixmap(max(1, w), max(1, h))
+        pix.fill(Qt.GlobalColor.transparent)
+        hp = QPainter(pix)
+        hp.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        size = 28
+        dx = size * math.sqrt(3)
+        dy = size * 1.5
+        cols = int(w / dx) + 3
+        rows = int(h / dy) + 3
+
+        pen_hex = QPen(qcol(primary_col, int(12 * dim)), 0.6)
+        hp.setPen(pen_hex)
+        hp.setBrush(Qt.BrushStyle.NoBrush)
+
+        cached_path = QPainterPath()
+        for row in range(-1, rows):
+            for col in range(-1, cols):
+                cx2 = col * dx + (size * math.sqrt(3) / 2 if row % 2 else 0)
+                cy2 = row * dy
+                first = True
+                for i in range(6):
+                    a = math.radians(60 * i - 30)
+                    px2 = cx2 + size * 0.85 * math.cos(a)
+                    py2 = cy2 + size * 0.85 * math.sin(a)
+                    if first:
+                        cached_path.moveTo(px2, py2)
+                        first = False
+                    else:
+                        cached_path.lineTo(px2, py2)
+                cached_path.closeSubpath()
+
+        hp.drawPath(cached_path)
+        hp.end()
+
+        self._cached_hex_pixmap = pix
+        self._cached_hex_key = key
+        return pix
+
     def _draw_radar_sweep(self, p: "QPainter", cx: float, cy: float, fw: float, primary_col: str, dim: float):
         r_sweep = fw * 0.47
         p.setBrush(Qt.BrushStyle.NoBrush)
@@ -604,15 +658,9 @@ class HologramCanvas(QWidget):
         p.setPen(QPen(qcol(primary_col, int(45 * dim)), 0.8))
         p.drawEllipse(QRectF(cx - r_deg, cy - r_deg, r_deg * 2, r_deg * 2))
 
-        # Degree marks every 10 degrees, with major ticks and cardinal text
+        # Degree marks every 10 degrees, with major ticks and cardinal text (uses pre-calculated table)
         p.setFont(QFont("Consolas", 6))
-        for deg in range(0, 360, 10):
-            rad = math.radians(deg)
-            cos_a = math.cos(rad)
-            sin_a = math.sin(rad)
-            is_cardinal = (deg % 90 == 0)
-            is_major = (deg % 30 == 0)
-
+        for deg, cos_a, sin_a, is_cardinal, is_major in _DEGREE_TICKS:
             tick_len = (10.0 if is_cardinal else (6.0 if is_major else 3.5)) + 2.0 * audio_boost
             r1 = r_deg
             r2 = r_deg - tick_len
@@ -824,30 +872,9 @@ class HologramCanvas(QWidget):
         # Background
         p.fillRect(self.rect(), QColor(C.BG))
 
-        # Faint hex grid background
-        size = 28
-        dx   = size * math.sqrt(3)
-        dy   = size * 1.5
-        cols = int(W / dx) + 3
-        rows = int(H / dy) + 3
-        pen_hex = QPen(qcol(primary_col, int(12 * dim)), 0.6)
-        p.setPen(pen_hex); p.setBrush(Qt.BrushStyle.NoBrush)
-        for row in range(-1, rows):
-            for col in range(-1, cols):
-                cx2 = col * dx + (size * math.sqrt(3) / 2 if row % 2 else 0)
-                cy2 = row * dy
-                path = QPainterPath()
-                first = True
-                for i in range(6):
-                    a = math.radians(60 * i - 30)
-                    px2 = cx2 + size * 0.85 * math.cos(a)
-                    py2 = cy2 + size * 0.85 * math.sin(a)
-                    if first:
-                        path.moveTo(px2, py2); first = False
-                    else:
-                        path.lineTo(px2, py2)
-                path.closeSubpath()
-                p.drawPath(path)
+        # Cached faint hex grid background
+        hex_pix = self._get_hex_grid_pixmap(int(W), int(H), primary_col, dim)
+        p.drawPixmap(0, 0, hex_pix)
 
         # Floating data particles
         p.setPen(Qt.PenStyle.NoPen)
@@ -904,8 +931,10 @@ class HologramCanvas(QWidget):
         # Arc Reactor Core power source (pulsing with audio amplitude)
         self._draw_arc_reactor(p, cx, cy, fw, primary_col, secondary_col, dim, audio_boost)
 
-        # Rotating wireframe robot bust — the hologram itself
-        self._draw_wireframe(p, cx, cy, fw, primary_col, secondary_col)
+        # Rotating wireframe robot bust — active holographic manifestation
+        # In SLEEPING and OFFLINE standby, omitted to keep idle standby CPU near-zero
+        if self._state not in ("SLEEPING", "OFFLINE"):
+            self._draw_wireframe(p, cx, cy, fw, primary_col, secondary_col)
 
         # Corner HUD framing & diagnostic telemetry readouts
         self._draw_corner_telemetry(p, W, H, fw, primary_col, secondary_col, dim, audio_fresh, audio_boost, theme)
