@@ -35,6 +35,7 @@ TRIGGER_TITLES = {
     "jarvis_pin_failure": "JARVIS PIN Gate Violation",
     "jarvis_voice_auth_failure": "Voice Identity Authentication Failure",
     "duress_logon_success": "SILENT DURESS LOGON ALERT",
+    "mobile_step_up_failure": "Mobile Step-Up Authentication Violation",
 }
 
 
@@ -90,6 +91,9 @@ def dispatch_security_alert(
         action_name = (details or {}).get("action", "wake/auth")
         score = (details or {}).get("score", "N/A")
         main_text = f"Unenrolled voice detected on sensitive action '{action_name}' (match score: {score})"
+    elif trigger_type == "mobile_step_up_failure":
+        action_name = (details or {}).get("action", "sensitive_mobile_action")
+        main_text = f"Step-up authentication failed on mobile action '{action_name}'"
     else:
         main_text = f"Security sentinel alert triggered: {trigger_type}"
 

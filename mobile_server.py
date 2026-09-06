@@ -82,6 +82,97 @@ def _load_or_create_mobile_token() -> str:
 
 MOBILE_AUTH_TOKEN = _load_or_create_mobile_token()
 
+CERT_PATH = BASE_DIR / "config" / "cert.pem"
+KEY_PATH  = BASE_DIR / "config" / "key.pem"
+
+
+def _get_or_create_tls_cert() -> tuple[Path, Path, str]:
+    """
+    Loads or generates a persistent self-signed X.509 certificate for WSS.
+    Reuses existing cert.pem / key.pem if already present so existing pairings remain valid.
+    Returns (cert_path, key_path, sha256_fingerprint_hex).
+    """
+    CERT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if CERT_PATH.exists() and KEY_PATH.exists():
+        try:
+            cert_bytes = CERT_PATH.read_bytes()
+            from cryptography import x509
+            from cryptography.hazmat.primitives import hashes
+            cert = x509.load_pem_x509_certificate(cert_bytes)
+            fingerprint = cert.fingerprint(hashes.SHA256()).hex().lower()
+            return CERT_PATH, KEY_PATH, fingerprint
+        except Exception as e:
+            log.warning(f"Failed to read existing TLS cert, regenerating: {e}")
+
+    # Generate new RSA private key and self-signed certificate
+    import ipaddress
+    from datetime import datetime, timedelta, timezone
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+    )
+
+    local_ip = get_local_ip()
+    san_list = [
+        x509.DNSName("localhost"),
+        x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+    ]
+    try:
+        if local_ip not in ("127.0.0.1", "0.0.0.0"):
+            san_list.append(x509.IPAddress(ipaddress.IPv4Address(local_ip)))
+    except Exception:
+        pass
+
+    subject = issuer = x509.Name([
+        x509.NameAttribute(NameOID.COMMON_NAME, "JARVIS Mobile Companion"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "JARVIS"),
+    ])
+
+    now = datetime.now(timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=3650))  # 10 years validity
+        .add_extension(x509.SubjectAlternativeName(san_list), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+
+    cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+    key_pem = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+    CERT_PATH.write_bytes(cert_pem)
+    KEY_PATH.write_bytes(key_pem)
+
+    fingerprint = cert.fingerprint(hashes.SHA256()).hex().lower()
+    print(f"[Mobile] 🔒 TLS Certificate generated ({CERT_PATH.name})")
+    print(f"[Mobile] 🔒 SHA-256 Fingerprint: {fingerprint}")
+    return CERT_PATH, KEY_PATH, fingerprint
+
+
+def _create_ssl_context() -> Optional[object]:
+    try:
+        import ssl
+        cert_path, key_path, _ = _get_or_create_tls_cert()
+        ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_ctx.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
+        return ssl_ctx
+    except Exception as e:
+        log.warning(f"Could not create SSLContext for WSS: {e}")
+        return None
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Sentinel Bridge — inbound webhook from FusionShield AI (fraud alerts)
@@ -586,6 +677,7 @@ class _WSHub:
         self._on_intercom_audio: Optional[Callable[[bytes], None]] = None  # callback(pcm_bytes) → play on PC
         self._on_incoming_call:  Optional[Callable[[dict], None]]  = None  # callback(call_info) → speak / announce
         self._on_incoming_sms:   Optional[Callable[[dict], None]]  = None  # callback(sms_info) → speak / announce
+        self._on_step_up_action: Optional[Callable[[str, dict], dict]] = None  # callback(action, payload) → result dict
         self._intercom_clients: Set = set()  # subset of self._clients currently in an intercom session
         global _ACTIVE_HUB
         _ACTIVE_HUB = self
@@ -593,7 +685,7 @@ class _WSHub:
     def set_callbacks(self, on_command: Callable, on_wake: Callable, on_token_register: Optional[Callable] = None,
                        on_intercom_start: Optional[Callable] = None, on_intercom_stop: Optional[Callable] = None,
                        on_intercom_audio: Optional[Callable] = None, on_incoming_call: Optional[Callable] = None,
-                       on_incoming_sms: Optional[Callable] = None):
+                       on_incoming_sms: Optional[Callable] = None, on_step_up_action: Optional[Callable] = None):
         self._on_cmd   = on_command
         self._on_wake  = on_wake
         self._on_token = on_token_register
@@ -602,6 +694,7 @@ class _WSHub:
         self._on_intercom_audio = on_intercom_audio
         self._on_incoming_call  = on_incoming_call
         self._on_incoming_sms   = on_incoming_sms
+        self._on_step_up_action = on_step_up_action
 
     def send_sms(self, recipient: str, body: str):
         """Dispatches a send_sms command to connected mobile companion client."""
@@ -800,6 +893,57 @@ class _WSHub:
                             self._on_incoming_sms(sms_info)
                         except Exception as e:
                             print(f"[Mobile] ⚠️ incoming SMS handler error: {e}")
+                elif kind == "step_up_action":
+                    raw_data = msg.get("data", "")
+                    step_data = {}
+                    if isinstance(raw_data, str) and raw_data.strip():
+                        try:
+                            step_data = json.loads(raw_data)
+                        except Exception:
+                            step_data = {}
+                    elif isinstance(raw_data, dict):
+                        step_data = raw_data
+
+                    action_name = str(step_data.get("action", "")).strip()
+                    pin = str(step_data.get("pin", "")).strip()
+                    payload = step_data.get("payload") or {}
+
+                    from core.access_control import AccessControl
+                    ac = AccessControl()
+                    is_valid = ac.verify_pin(pin, action=f"mobile_{action_name}")
+
+                    if not is_valid:
+                        err_msg = "PIN verification failed or account locked."
+                        locked_s = ac._seconds_locked()
+                        if locked_s > 0:
+                            err_msg = f"Account locked. Try again in {int(locked_s)}s."
+                        print(f"[Mobile] ⛔ Step-up auth failed for action '{action_name}' from {ip}")
+                        await websocket.send(json.dumps({
+                            "type": "step_up_result",
+                            "data": json.dumps({
+                                "action": action_name,
+                                "success": False,
+                                "error": err_msg,
+                            })
+                        }))
+                    else:
+                        print(f"[Mobile] 🔓 Step-up auth granted for action '{action_name}' from {ip}")
+                        result_data = None
+                        if self._on_step_up_action:
+                            try:
+                                result_data = self._on_step_up_action(action_name, payload)
+                            except Exception as e:
+                                print(f"[Mobile] ⚠️ step_up_action callback error: {e}")
+                                result_data = {"error": str(e)}
+
+                        await websocket.send(json.dumps({
+                            "type": "step_up_result",
+                            "data": json.dumps({
+                                "action": action_name,
+                                "success": True,
+                                "result": result_data or {"status": "ok"},
+                            })
+                        }))
                 elif kind == "wipe_request":
                     try:
                         from core.sentinel_extras import EmergencyWipeController
@@ -845,8 +989,10 @@ class _WSHub:
         try:
             import websockets as _ws
             self._loop = asyncio.get_running_loop()
-            print(f"[Mobile] 🔌 WebSocket server on ws://0.0.0.0:{WS_PORT}")
-            async with _ws.serve(self.handler, "0.0.0.0", WS_PORT):
+            ssl_ctx = _create_ssl_context()
+            proto = "wss" if ssl_ctx else "ws"
+            print(f"[Mobile] 🔌 WebSocket server on {proto}://0.0.0.0:{WS_PORT}")
+            async with _ws.serve(self.handler, "0.0.0.0", WS_PORT, ssl=ssl_ctx):
                 await asyncio.Future()   # run forever
         except Exception as e:
             print(f"[Mobile] ❌ WebSocket server error: {e}")
@@ -1924,7 +2070,7 @@ class MobileServer:
 
     def set_callbacks(self, on_command, on_wake, on_token_register=None,
                        on_intercom_start=None, on_intercom_stop=None, on_intercom_audio=None,
-                       on_incoming_call=None, on_incoming_sms=None):
+                       on_incoming_call=None, on_incoming_sms=None, on_step_up_action=None):
         def _save_and_forward(token: str):
             self._fcm.save_token(token)
             if on_token_register:
@@ -1932,7 +2078,7 @@ class MobileServer:
                 except Exception: pass
         self._hub.set_callbacks(on_command, on_wake, _save_and_forward,
                                  on_intercom_start, on_intercom_stop, on_intercom_audio,
-                                 on_incoming_call, on_incoming_sms)
+                                 on_incoming_call, on_incoming_sms, on_step_up_action)
         _HTTPHandler._command_cb = on_command
 
     def send_sms(self, recipient: str, body: str):

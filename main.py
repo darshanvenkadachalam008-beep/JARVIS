@@ -1796,6 +1796,32 @@ class JarvisLive:
                     self.speak(f"Sir, new message from {sender}: {body}")
                 except Exception as e:
                     print(f"[Mobile] Error announcing incoming SMS: {e}")
+            def _on_mobile_step_up(action: str, payload: dict) -> dict:
+                try:
+                    if action == "read_sms_body":
+                        sender = payload.get("sender", "Unknown")
+                        body = payload.get("body", "")
+                        print(f"[JARVIS] 🔐 Step-up granted: reading SMS from {sender}")
+                        if self.ui:
+                            self.ui.write_log(f"SMS: Step-up authorized read-back for {sender}")
+                        self.speak(f"Sir, reading message from {sender}: {body}")
+                        return {"status": "ok", "sender": sender, "body": body}
+                    elif action == "call_decision":
+                        decision = payload.get("decision", "rejected")
+                        number = payload.get("number", "Unknown")
+                        name = payload.get("name", "")
+                        caller = name if name else number
+                        print(f"[JARVIS] 🔐 Step-up granted: call {decision} for {caller}")
+                        if self.ui:
+                            self.ui.write_log(f"CALL: Step-up authorized {decision} for {caller}")
+                        self.speak(f"Sir, call from {caller} {decision}.")
+                        return {"status": "ok", "decision": decision, "caller": caller}
+                    else:
+                        print(f"[JARVIS] 🔐 Step-up granted for action: {action}")
+                        return {"status": "ok", "action": action}
+                except Exception as e:
+                    print(f"[Mobile] Error executing step-up action ({action}): {e}")
+                    return {"status": "error", "message": str(e)}
             self._mobile.set_callbacks(
                 on_command = _on_mobile_cmd,
                 on_wake    = self._on_wake_word,
@@ -1804,6 +1830,7 @@ class JarvisLive:
                 on_intercom_audio = self._on_intercom_audio_received,
                 on_incoming_call  = _on_mobile_call,
                 on_incoming_sms   = _on_mobile_sms,
+                on_step_up_action = _on_mobile_step_up,
             )
             if hasattr(self, "_proactive_bridge") and self._proactive_bridge:
                 self._proactive_bridge.set_mobile_sink(lambda msg, jpeg: self._mobile.notify(msg) if self._mobile else None)

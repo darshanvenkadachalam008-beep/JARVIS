@@ -1508,6 +1508,7 @@ class JarvisTrayApp:
             on_intercom_audio = self._on_intercom_audio_received,
             on_incoming_call  = self._on_mobile_incoming_call,
             on_incoming_sms   = self._on_mobile_incoming_sms,
+            on_step_up_action = self._on_mobile_step_up,
         )
         # ── Phase 4: Proactive Bridge (Daemon-level unified push) ─────────────
         from core.proactive_bridge import ProactiveBridge
@@ -1884,6 +1885,35 @@ class JarvisTrayApp:
                 self._session.speak(f"Sir, new message from {sender}: {body}")
         except Exception as e:
             print(f"[Mobile] Error announcing incoming SMS: {e}")
+
+    def _on_mobile_step_up(self, action: str, payload: dict) -> dict:
+        try:
+            if action == "read_sms_body":
+                sender = payload.get("sender", "Unknown")
+                body = payload.get("body", "")
+                print(f"[JARVIS Service] 🔐 Step-up granted: reading SMS from {sender}")
+                if self._ui:
+                    self._ui.write_log(f"SMS: Step-up authorized read-back for {sender}")
+                if self._session:
+                    self._session.speak(f"Sir, reading message from {sender}: {body}")
+                return {"status": "ok", "sender": sender, "body": body}
+            elif action == "call_decision":
+                decision = payload.get("decision", "rejected")
+                number = payload.get("number", "Unknown")
+                name = payload.get("name", "")
+                caller = name if name else number
+                print(f"[JARVIS Service] 🔐 Step-up granted: call {decision} for {caller}")
+                if self._ui:
+                    self._ui.write_log(f"CALL: Step-up authorized {decision} for {caller}")
+                if self._session:
+                    self._session.speak(f"Sir, call from {caller} {decision}.")
+                return {"status": "ok", "decision": decision, "caller": caller}
+            else:
+                print(f"[JARVIS Service] 🔐 Step-up granted for action: {action}")
+                return {"status": "ok", "action": action}
+        except Exception as e:
+            print(f"[Mobile] Error executing step-up action ({action}): {e}")
+            return {"status": "error", "message": str(e)}
 
     def _on_mobile_command(self, text: str):
         """Called when a command arrives from the mobile companion app.

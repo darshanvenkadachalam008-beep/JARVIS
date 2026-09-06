@@ -42,11 +42,14 @@ def load_auth_token() -> str:
 def generate_pairing_payload(lan_ip: str | None = None) -> dict:
     ip = lan_ip or get_lan_ip()
     token = load_auth_token()
+    from mobile_server import _get_or_create_tls_cert
+    _, _, fingerprint = _get_or_create_tls_cert()
     return {
         "ip": ip,
         "port": 8081,
         "http_port": 8080,
         "token": token,
+        "cert_fingerprint": fingerprint,
     }
 
 def render_qr(payload: dict, save_image: bool = True) -> str:
@@ -69,6 +72,8 @@ def render_qr(payload: dict, save_image: bool = True) -> str:
     print(f"  WS Port     : {payload['port']}")
     print(f"  HTTP Port   : {payload['http_port']}")
     print(f"  Auth Token  : {payload['token'][:6]}...{payload['token'][-4:]}")
+    if payload.get("cert_fingerprint"):
+        print(f"  TLS SHA-256 : {payload['cert_fingerprint'][:16]}...{payload['cert_fingerprint'][-8:]}")
     print("=" * 60 + "\n")
 
     try:

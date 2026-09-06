@@ -313,9 +313,12 @@ class AccessControl:
             alert_details = {"action": action, "result": result}
             if details:
                 alert_details.update(details)
+            is_mobile = str(action).startswith("mobile_")
+            trigger = "mobile_step_up_failure" if is_mobile else "jarvis_pin_failure"
+            actor = "mobile_companion" if is_mobile else "user"
             dispatch_security_alert(
-                trigger_type="jarvis_pin_failure",
-                actor="user",
+                trigger_type=trigger,
+                actor=actor,
                 details=alert_details,
                 bridge=getattr(self, "_bridge", None),
             )
