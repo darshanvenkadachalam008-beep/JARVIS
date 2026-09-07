@@ -36,6 +36,7 @@ TRIGGER_TITLES = {
     "jarvis_voice_auth_failure": "Voice Identity Authentication Failure",
     "duress_logon_success": "SILENT DURESS LOGON ALERT",
     "mobile_step_up_failure": "Mobile Step-Up Authentication Violation",
+    "audit_chain_tampered": "Audit Log Cryptographic Tampering Alert",
 }
 
 

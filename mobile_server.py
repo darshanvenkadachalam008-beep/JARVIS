@@ -25,6 +25,7 @@ import logging
 import os
 import secrets
 import socket
+import sys
 import threading
 import time
 import urllib.parse
@@ -51,17 +52,13 @@ API_KEYS_PATH            = BASE_DIR / "config" / "api_keys.json"
 
 def _load_or_create_mobile_token() -> str:
     """
-    Reads mobile_auth_token from config/api_keys.json, generating and
+    Reads mobile_auth_token from encrypted configuration, generating and
     persisting a new random one the first time this runs. Anyone who wants
     to control this JARVIS instance (WS commands, /command, /register-token)
     must now present this exact token.
     """
-    cfg = {}
-    try:
-        if API_KEYS_PATH.exists():
-            cfg = json.loads(API_KEYS_PATH.read_text(encoding="utf-8"))
-    except Exception as e:
-        log.warning(f"Could not read api_keys.json: {e}")
+    from config import get_config, save_config
+    cfg = get_config()
 
     token = cfg.get("mobile_auth_token", "").strip() if isinstance(cfg, dict) else ""
     if token:
@@ -70,9 +67,8 @@ def _load_or_create_mobile_token() -> str:
     token = secrets.token_urlsafe(24)
     cfg["mobile_auth_token"] = token
     try:
-        API_KEYS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        API_KEYS_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-        print(f"[Mobile] 🔐 Generated new mobile_auth_token and saved to {API_KEYS_PATH.name}")
+        save_config(cfg)
+        print(f"[Mobile] 🔐 Generated new mobile_auth_token and saved securely via DPAPI")
         print(f"[Mobile] 🔐 Token: {token}")
         print(f"[Mobile] 🔐 Enter this once in the mobile app / your Shortcuts automation.")
     except Exception as e:
@@ -180,7 +176,7 @@ def _create_ssl_context() -> Optional[object]:
 
 def _load_sentinel_secret() -> str:
     """
-    Reads sentinel_shared_secret from config/api_keys.json. This is a
+    Reads sentinel_shared_secret from configuration. This is a
     *different* secret from MOBILE_AUTH_TOKEN on purpose: MOBILE_AUTH_TOKEN
     authenticates the phone/you controlling JARVIS; sentinel_shared_secret
     authenticates a completely different caller (the FusionShield backend)
@@ -189,14 +185,14 @@ def _load_sentinel_secret() -> str:
     permanently disabled rather than silently accepting unsigned webhooks.
     """
     try:
-        if API_KEYS_PATH.exists():
-            cfg = json.loads(API_KEYS_PATH.read_text(encoding="utf-8"))
-            secret = cfg.get("sentinel_shared_secret", "").strip() if isinstance(cfg, dict) else ""
-            if secret:
-                return secret
+        from config import get_config
+        cfg = get_config()
+        secret = cfg.get("sentinel_shared_secret", "").strip() if isinstance(cfg, dict) else ""
+        if secret:
+            return secret
     except Exception as e:
         log.warning(f"Could not read sentinel_shared_secret: {e}")
-    print("[Sentinel] [!] sentinel_shared_secret not set in api_keys.json — "
+    print("[Sentinel] [!] sentinel_shared_secret not set in configuration — "
           "/fraud-alert webhook is disabled until it's configured.")
     return ""
 
@@ -211,16 +207,16 @@ _fraud_alert_lock = threading.Lock()
 
 
 def _load_fusionshield_api_url() -> str:
-    """Reads fusionshield_api_url from config/api_keys.json — the base URL
+    """Reads fusionshield_api_url from configuration — the base URL
     JARVIS calls BACK into FusionShield on when a supervisor confirms an
     action (e.g. 'freeze this account'). Defaults to localhost:8000, which
     is right if both run on the same machine (the common hackathon setup)."""
     try:
-        if API_KEYS_PATH.exists():
-            cfg = json.loads(API_KEYS_PATH.read_text(encoding="utf-8"))
-            url = (cfg.get("fusionshield_api_url", "") or "").strip() if isinstance(cfg, dict) else ""
-            if url:
-                return url.rstrip("/")
+        from config import get_config
+        cfg = get_config()
+        url = (cfg.get("fusionshield_api_url", "") or "").strip() if isinstance(cfg, dict) else ""
+        if url:
+            return url.rstrip("/")
     except Exception as e:
         log.warning(f"Could not read fusionshield_api_url: {e}")
     return "http://127.0.0.1:8000/api/v1"
@@ -300,16 +296,16 @@ def _speak_fraud_alert(alert: dict):
         log.warning(f"[Sentinel] Voice announcement failed: {e}")
 
 
-def _load_telegram_creds():
-    """Raw bot token + chat id, read directly (TelegramAlerter keeps these
-    private) — needed here for getUpdates/answerCallbackQuery/inline
+def _load_telegram_creds() -> tuple[Optional[str], Optional[str]]:
+    """Reads raw Telegram bot credentials directly from encrypted config —
+    needed here for getUpdates/answerCallbackQuery/inline
     keyboards, which TelegramAlerter doesn't expose."""
     try:
-        if API_KEYS_PATH.exists():
-            cfg = json.loads(API_KEYS_PATH.read_text(encoding="utf-8"))
-            token = cfg.get("telegram_bot_token") or cfg.get("TELEGRAM_BOT_TOKEN")
-            chat_id = cfg.get("telegram_chat_id") or cfg.get("TELEGRAM_CHAT_ID")
-            return token, (str(chat_id) if chat_id else None)
+        from config import get_config
+        cfg = get_config()
+        token = cfg.get("telegram_bot_token") or cfg.get("TELEGRAM_BOT_TOKEN")
+        chat_id = cfg.get("telegram_chat_id") or cfg.get("TELEGRAM_CHAT_ID")
+        return token, (str(chat_id) if chat_id else None)
     except Exception as e:
         log.warning(f"Could not read telegram creds: {e}")
     return None, None
@@ -322,7 +318,7 @@ FREEZE_CONFIRM_WINDOW_SECONDS = 90
 
 
 def _load_twilio_creds():
-    """Reads the twilio_* keys from config/api_keys.json — same four keys
+    """Reads the twilio_* keys from configuration — same four keys
     jarvis_watcher_service.py already uses for the intruder-call/SMS
     alert. Reused here for the account-holder freeze notice so this
     doesn't need its own separate Twilio setup."""
@@ -633,6 +629,67 @@ def _record_failed_auth(ip: str, detail: str = "bad token"):
         _broadcast_conn_event("blocked", ip, f"{_BLOCK_SEC}s block")
 
 
+# ── Paired IP Allowlist Cache ────────────────────────────────────────────────
+_PAIRED_IPS_PATH = BASE_DIR / "config" / ".paired_ips.json"
+_PAIRED_IPS: set = set()
+
+
+def _load_paired_ips() -> set:
+    global _PAIRED_IPS
+    try:
+        if _PAIRED_IPS_PATH.exists():
+            data = json.loads(_PAIRED_IPS_PATH.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                _PAIRED_IPS = set(data)
+    except Exception as e:
+        log.warning(f"Could not load paired IPs: {e}")
+    _PAIRED_IPS.add("127.0.0.1")
+    _PAIRED_IPS.add("::1")
+    return _PAIRED_IPS
+
+
+def _save_paired_ip(ip: str) -> None:
+    global _PAIRED_IPS
+    if not ip or ip in ("?", "127.0.0.1", "::1"):
+        return
+    _PAIRED_IPS.add(ip)
+    try:
+        _PAIRED_IPS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _PAIRED_IPS_PATH.write_text(json.dumps(sorted(list(_PAIRED_IPS)), indent=2), encoding="utf-8")
+    except Exception as e:
+        log.warning(f"Could not save paired IP: {e}")
+
+
+_load_paired_ips()
+
+
+def _ensure_windows_firewall_rule() -> None:
+    """Ensures a Windows Firewall rule exists scoping inbound TCP 8080/8081 to Private networks only."""
+    if not sys.platform.startswith("win"):
+        return
+    import subprocess
+    rule_name = "JARVIS Mobile Companion Bridge"
+    try:
+        check_cmd = ["netsh", "advfirewall", "firewall", "show", "rule", f"name={rule_name}"]
+        res = subprocess.run(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3)
+        if "No rules match" in res.stdout or res.returncode != 0:
+            add_cmd = [
+                "netsh", "advfirewall", "firewall", "add", "rule",
+                f"name={rule_name}", "dir=in", "action=allow",
+                "protocol=TCP", f"localport={HTTP_PORT},{WS_PORT}",
+                "profile=private"
+            ]
+            add_res = subprocess.run(add_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+            if add_res.returncode == 0:
+                print(f"[Mobile] 🛡️ Configured Windows Firewall rule '{rule_name}' for Private profile only.")
+            else:
+                log.info(f"[Mobile] Notice: Windows Firewall rule '{rule_name}' requires admin elevation to auto-add.")
+        else:
+            print(f"[Mobile] 🛡️ Windows Firewall rule '{rule_name}' verified (Private profile).")
+    except Exception as e:
+        log.debug(f"[Mobile] Firewall rule check exception: {e}")
+
+
 def _load_firebase_web_config() -> Optional[dict]:
     """
     Loads the Firebase *web app* config (different from the service
@@ -781,6 +838,7 @@ class _WSHub:
                     token = str(msg.get("data", "")).strip()
                     if token and secrets.compare_digest(token, MOBILE_AUTH_TOKEN):
                         authed = True
+                        _save_paired_ip(ip)
                         await websocket.send(json.dumps({
                             "type": "sys", "data": "JARVIS Mobile connected. Ready, sir."
                         }))
@@ -2094,6 +2152,7 @@ class MobileServer:
         self._hub.broadcast_audio(pcm_bytes)
 
     def start(self):
+        _ensure_windows_firewall_rule()
         _HTTPHandler.pc_ip = self._pc_ip
         _HTTPHandler.firebase_config = _load_firebase_web_config()
         self._http = HTTPServer(("0.0.0.0", HTTP_PORT), _HTTPHandler)

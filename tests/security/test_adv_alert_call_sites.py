@@ -1,12 +1,13 @@
 """
 tests/security/test_adv_alert_call_sites.py
 ============================================
-Static and dynamic liveness test for the complete set of 5 Unified Security Alert Triggers:
+Static and dynamic liveness test for the complete set of 6 Unified Security Alert Triggers:
 1. windows_lockscreen_failure
 2. jarvis_pin_failure
 3. jarvis_voice_auth_failure
 4. duress_logon_success
 5. mobile_step_up_failure
+6. audit_chain_tampered
 
 Asserts that every trigger exists in TRIGGER_TITLES, has an active call site in production code,
 and dispatches properly through dispatch_security_alert.
@@ -22,35 +23,37 @@ EXPECTED_TRIGGERS = {
     "jarvis_voice_auth_failure",
     "duress_logon_success",
     "mobile_step_up_failure",
+    "audit_chain_tampered",
 }
 
 
 def test_trigger_enumeration_completeness():
-    """Asserts TRIGGER_TITLES contains exactly the 5 registered security triggers."""
+    """Asserts TRIGGER_TITLES contains exactly the 6 registered security triggers."""
     registered = set(TRIGGER_TITLES.keys())
     assert registered == EXPECTED_TRIGGERS, f"Mismatch in registered triggers: {registered ^ EXPECTED_TRIGGERS}"
 
 
 def test_trigger_call_sites_exist_in_codebase():
-    """Statically verifies through AST inspection that all 5 triggers appear in production call sites."""
+    """Statically verifies through AST inspection that all 6 triggers appear in production call sites."""
     root_dir = Path(__file__).resolve().parent.parent.parent
-    core_dir = root_dir / "core"
+    scan_dirs = [root_dir / "core", root_dir / "sentinel"]
 
     found_triggers = {t: [] for t in EXPECTED_TRIGGERS}
 
-    for py_file in core_dir.glob("*.py"):
-        try:
-            tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                    if node.value in EXPECTED_TRIGGERS:
-                        found_triggers[node.value].append(py_file.name)
-        except Exception:
-            pass
+    for scan_dir in scan_dirs:
+        for py_file in scan_dir.rglob("*.py"):
+            try:
+                tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                        if node.value in EXPECTED_TRIGGERS:
+                            found_triggers[node.value].append(py_file.name)
+            except Exception:
+                pass
 
-    # Assert every expected trigger is referenced in core production files
+    # Assert every expected trigger is referenced in core or sentinel production files
     for trigger, files in found_triggers.items():
-        assert len(files) > 0, f"Trigger '{trigger}' has no references in core/"
+        assert len(files) > 0, f"Trigger '{trigger}' has no references in core/ or sentinel/"
         # Ensure it is referenced outside unified_security_alert.py itself
         external_refs = [f for f in files if f != "unified_security_alert.py"]
         assert len(external_refs) > 0, f"Trigger '{trigger}' is dead code; only appears in unified_security_alert.py"
@@ -68,8 +71,20 @@ def test_duress_logon_success_dispatch():
     assert "SILENT DURESS LOGON ALERT" in event["details"]["trigger_type"] or event["details"]["trigger_type"] == "duress_logon_success"
 
 
-def test_all_five_triggers_dispatch_successfully():
-    """Verifies that all 5 triggers produce structured alert payloads without throwing."""
+def test_audit_chain_tampered_dispatch():
+    """Explicitly verifies dispatch of the audit_chain_tampered trigger."""
+    event = dispatch_security_alert(
+        trigger_type="audit_chain_tampered",
+        actor="audit_sentinel",
+        details={"error": "Invalid HMAC signature on index 42", "source": "periodic_verifier"}
+    )
+    assert event["trigger_type"] == "audit_chain_tampered"
+    assert event["actor"] == "audit_sentinel"
+    assert "Audit Log Cryptographic Tampering Alert" in event["details"]["trigger_type"] or event["details"]["trigger_type"] == "audit_chain_tampered"
+
+
+def test_all_six_triggers_dispatch_successfully():
+    """Verifies that all 6 triggers produce structured alert payloads without throwing."""
     for trigger in EXPECTED_TRIGGERS:
         event = dispatch_security_alert(
             trigger_type=trigger,
@@ -80,3 +95,4 @@ def test_all_five_triggers_dispatch_successfully():
         assert event["actor"] == "test_adversarial"
         assert "time" in event
         assert "location" in event
+

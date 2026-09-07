@@ -2,6 +2,8 @@
 
 import os
 import json
+import time
+import threading
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
@@ -92,6 +94,9 @@ class AuditLogger:
                                     actor="system",
                                     details={"entry_index": entry.index, "error": str(cie)},
                                 )
+                            self._dispatch_tamper_alert(
+                                details={"entry_index": entry.index, "error": str(cie), "source": "mid_run_mirror"}
+                            )
                             return
                         except (OSError, IOError) as ioe:
                             logger.warning("Transient I/O error reading mirror state: %s", ioe)
@@ -508,3 +513,74 @@ class AuditLogger:
                 expected_index += 1
 
         return True, expected_index, None
+
+    def _dispatch_tamper_alert(self, details: Dict[str, Any]) -> None:
+        """Dispatches an out-of-band security alert for audit chain tampering."""
+        try:
+            from core.unified_security_alert import dispatch_security_alert
+            dispatch_security_alert(
+                trigger_type="audit_chain_tampered",
+                actor="audit_sentinel",
+                details=details,
+                custom_msg=(
+                    f"CRITICAL: Cryptographic audit log tampering detected ({details.get('source', 'verifier')}). "
+                    f"Details: {details.get('error', 'Integrity check failed')}"
+                ),
+            )
+        except Exception as e:
+            logger.error(f"Failed to dispatch audit chain tamper security alert: {e}")
+
+    def start_periodic_verifier(self, interval_seconds: int = 300) -> threading.Thread:
+        """
+        Starts a background daemon thread that periodically verifies the audit log
+        hash chain and mirror state to detect idle, out-of-band tampering.
+        """
+        self._stop_verifier = False
+
+        def _verifier_loop():
+            while not getattr(self, "_stop_verifier", False):
+                time.sleep(interval_seconds)
+                if getattr(self, "_stop_verifier", False):
+                    break
+                try:
+                    with FileLock(str(self.lock_file), timeout=self.lock_timeout):
+                        is_valid, count, err = self.verify_chain(self.log_file, self.hmac_keys or self.hmac_key)
+                        if not is_valid:
+                            logger.critical("PERIODIC AUDIT LOG TAMPERING DETECTED: %s", err)
+                            self._dispatch_tamper_alert({
+                                "count": count,
+                                "error": str(err),
+                                "source": "periodic_verifier",
+                            })
+                            continue
+
+                        local_tail_index = count - 1
+                        try:
+                            last_confirmed = self._read_mirror_state()
+                            if last_confirmed > local_tail_index:
+                                logger.critical(
+                                    "PERIODIC AUDIT TRUNCATION DETECTED: mirror confirms index %d but local tail is %d",
+                                    last_confirmed, local_tail_index,
+                                )
+                                self._dispatch_tamper_alert({
+                                    "last_confirmed_mirror": last_confirmed,
+                                    "local_tail_index": local_tail_index,
+                                    "error": "Local audit log truncated",
+                                    "source": "periodic_verifier",
+                                })
+                        except ChainIntegrityError as cie:
+                            self._dispatch_tamper_alert({
+                                "error": str(cie),
+                                "source": "periodic_verifier",
+                            })
+                except Exception as e:
+                    logger.warning("Periodic audit verification error: %s", e)
+
+        t = threading.Thread(target=_verifier_loop, daemon=True, name="AuditPeriodicChainVerifier")
+        t.start()
+        self._verifier_thread = t
+        return t
+
+    def stop_periodic_verifier(self) -> None:
+        """Signals the background verifier daemon thread to stop."""
+        self._stop_verifier = True

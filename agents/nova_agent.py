@@ -443,10 +443,9 @@ class NovaAgent(BaseAgent):
     # ── Helpers ──────────────────────────────────────────────────────────────
 
     def _load_cfg(self) -> None:
-        path = _get_base_dir() / "config" / "api_keys.json"
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                self._cfg = json.load(f)
+            from config import get_config
+            self._cfg = get_config()
         except Exception:
             self._cfg = {}
 

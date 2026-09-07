@@ -41,9 +41,8 @@ class TelegramAlerter:
 
     def _load_config(self) -> tuple[Optional[str], Optional[str]]:
         try:
-            if not CONFIG_PATH.exists():
-                return None, None
-            data      = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            from config import get_config
+            data      = get_config()
             token     = data.get("telegram_bot_token") or data.get("TELEGRAM_BOT_TOKEN")
             chat_id   = data.get("telegram_chat_id")   or data.get("TELEGRAM_CHAT_ID")
             return token, str(chat_id) if chat_id else None

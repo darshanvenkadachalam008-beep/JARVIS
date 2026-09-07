@@ -137,15 +137,16 @@ class AdaAgent(BaseAgent):
             return f"[Draft placeholder — LLM unavailable: {e}]\n\nTopic: {topic}\nPlatform: {platform}"
 
     def _load_api_key(self) -> str:
-        path = _get_base_dir() / "config" / "api_keys.json"
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f).get("gemini_api_key", "")
+        try:
+            from config import get_config
+            return get_config().get("gemini_api_key", "")
+        except Exception:
+            return ""
 
     def _load_cfg(self) -> dict:
-        path = _get_base_dir() / "config" / "api_keys.json"
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+            from config import get_config
+            return get_config()
         except Exception:
             return {}
 
