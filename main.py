@@ -1688,7 +1688,15 @@ class JarvisLive:
         )
         try:
             from sentinel.audit import AuditLogger
-            _audit = AuditLogger()
+            from sentinel.audit.sinks import WebhookMirrorSink
+            from config import get_config
+            cfg = get_config()
+            sinks = []
+            webhook_url = cfg.get("audit_mirror_webhook_url") or cfg.get("AUDIT_MIRROR_WEBHOOK_URL")
+            if webhook_url:
+                sinks.append(WebhookMirrorSink(endpoint_url=webhook_url))
+            _audit = AuditLogger(sinks=sinks if sinks else None)
+            _audit.start_periodic_verifier(interval_seconds=300)
             self._proactive_bridge.set_audit_sink(lambda cat, actor, details: _audit.log_event(event_type=cat, actor=actor, details=details))
         except Exception as _ae:
             print(f"[ProactiveBridge] Audit sink initialization skipped: {_ae}")

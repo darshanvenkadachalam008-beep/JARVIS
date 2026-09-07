@@ -837,12 +837,20 @@ class _WSHub:
                 if kind == "auth":
                     token = str(msg.get("data", "")).strip()
                     if token and secrets.compare_digest(token, MOBILE_AUTH_TOKEN):
-                        authed = True
+                        is_already_paired = ip in _PAIRED_IPS
+                        is_first_pairing = len(_PAIRED_IPS - {"127.0.0.1", "::1"}) == 0
                         _save_paired_ip(ip)
+                        authed = True
+                        if is_already_paired:
+                            print(f"[Mobile] 🔓 Known paired IP {ip} authenticated")
+                        elif is_first_pairing:
+                            print(f"[Mobile] 📱 Initial companion pairing recorded for IP {ip}")
+                        else:
+                            print(f"[Mobile] 📱 New companion IP {ip} authenticated and registered to paired allowlist")
+
                         await websocket.send(json.dumps({
                             "type": "sys", "data": "JARVIS Mobile connected. Ready, sir."
                         }))
-                        print(f"[Mobile] 🔓 {ip} authenticated")
                         _broadcast_conn_event("auth_ok", ip)
                     else:
                         _record_failed_auth(ip)
