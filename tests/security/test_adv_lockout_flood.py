@@ -85,6 +85,9 @@ async def test_adversarial_websocket_step_up_pin_flood(tmp_path):
         json.dumps({"type": "step_up_action", "data": json.dumps({"action": "read_sms_body", "pin": "0002", "payload": {}})}),
     ]
 
+    from mobile_server import _PAIRED_IPS
+    _PAIRED_IPS.add("192.168.1.100")
+
     hub = _WSHub()
     with patch("core.access_control.AccessControl", return_value=ac):
         ws = MockWebSocket(messages)

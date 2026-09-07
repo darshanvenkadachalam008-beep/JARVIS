@@ -360,7 +360,7 @@ class TestRealCallerAlertIntegration(unittest.TestCase):
             dummy_file = Path(td) / "secret.txt"
             dummy_file.write_text("classified data")
 
-            with patch.dict("sys.modules", {"send2trash": None}):
+            with patch("actions.file_controller.send2trash", None):
                 res = file_controller({"action": "delete", "path": str(dummy_file), "pin": "000000"})
                 self.assertIn("Permanent delete refused: PIN missing or incorrect", res)
                 self.assertEqual(mock_bridge.dispatch.call_count, 1)

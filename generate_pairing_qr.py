@@ -54,17 +54,19 @@ def generate_pairing_payload(lan_ip: str | None = None) -> dict:
     }
 
 def render_qr(payload: dict, save_image: bool = True) -> str:
-    import qrcode
-
     raw_json = json.dumps(payload)
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=10,
-        border=2,
-    )
-    qr.add_data(raw_json)
-    qr.make(fit=True)
+    try:
+        import qrcode
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=10,
+            border=2,
+        )
+        qr.add_data(raw_json)
+        qr.make(fit=True)
+    except ImportError:
+        qr = None
 
     print("\n" + "=" * 60)
     print("      J.A.R.V.I.S  COMPANION  PAIRING  QR  CODE")
@@ -77,23 +79,26 @@ def render_qr(payload: dict, save_image: bool = True) -> str:
         print(f"  TLS SHA-256 : {payload['cert_fingerprint'][:16]}...{payload['cert_fingerprint'][-8:]}")
     print("=" * 60 + "\n")
 
-    try:
-        if sys.stdout.encoding.lower() != "utf-8":
-            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        qr.print_ascii(invert=True)
-    except Exception:
-        # Fallback ascii printing
-        matrix = qr.get_matrix()
-        for row in matrix:
-            print("".join("██" if cell else "  " for cell in row))
-
-    if save_image:
+    if qr is not None:
         try:
-            img = qr.make_image(fill_color="black", back_color="white")
-            img.save(str(QR_OUTPUT_PATH))
-            print(f"\n[QR] Saved image to: {QR_OUTPUT_PATH}")
-        except Exception as e:
-            print(f"[QR] Failed to save image: {e}")
+            if sys.stdout.encoding.lower() != "utf-8":
+                sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            qr.print_ascii(invert=True)
+        except Exception:
+            # Fallback ascii printing
+            matrix = qr.get_matrix()
+            for row in matrix:
+                print("".join("██" if cell else "  " for cell in row))
+
+        if save_image:
+            try:
+                img = qr.make_image(fill_color="black", back_color="white")
+                img.save(str(QR_OUTPUT_PATH))
+                print(f"\n[QR] Saved image to: {QR_OUTPUT_PATH}")
+            except Exception as e:
+                print(f"[QR] Failed to save image: {e}")
+    else:
+        print("[QR] qrcode package not installed; rendered raw JSON payload.")
 
     return raw_json
 

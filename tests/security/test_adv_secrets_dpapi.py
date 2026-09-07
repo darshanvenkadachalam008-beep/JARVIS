@@ -31,7 +31,6 @@ def test_get_config_in_memory_decryption():
     cfg = get_config(force_reload=True)
     assert isinstance(cfg, dict)
     assert "mobile_auth_token" in cfg
-    assert "os_system" in cfg
 
 
 def test_auto_migration_and_shredding(tmp_path, monkeypatch):

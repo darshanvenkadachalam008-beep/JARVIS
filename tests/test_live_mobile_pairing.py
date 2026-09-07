@@ -79,7 +79,7 @@ async def _recv_type(ws, expected_type: str, timeout: float = 5.0) -> dict:
     raise TimeoutError(f"Did not receive expected message type: {expected_type}")
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_live_mobile_server_wss_and_step_up_roundtrip():
     """
     Spins up real MobileServer instance and performs a full live WSS
