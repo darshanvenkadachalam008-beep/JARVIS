@@ -83,12 +83,16 @@ def test_hud_overlay_click_through_and_visibility_toggle(qapp):
 def test_hud_telemetry_wires_real_audit_verify(qapp):
     """Confirms HudTelemetry directly invokes AuditLog().verify()."""
     overlay = JarvisHudOverlay()
+    overlay._last_audit_check = 0
+    overlay._last_audit_mtime = -1
     
     with patch("core.audit_log.AuditLog.verify", return_value=(True, None)) as mock_verify:
         overlay._refresh_telemetry()
         assert mock_verify.called
         assert overlay.telemetry.audit_chain_valid is True
 
+    overlay._last_audit_check = 0
+    overlay._last_audit_mtime = -1
     with patch("core.audit_log.AuditLog.verify", return_value=(False, "Broken link at index 5")) as mock_verify_tamper:
         overlay._refresh_telemetry()
         assert mock_verify_tamper.called
@@ -97,8 +101,9 @@ def test_hud_telemetry_wires_real_audit_verify(qapp):
 
 
 def test_hud_telemetry_wires_real_integrity_verify(qapp):
-    """Confirms HudTelemetry invokes IntegrityMonitor().verify_integrity()."""
+    """Confirms HudTelemetry invokes IntegrityMonitor().verify_integrity() and fails closed."""
     overlay = JarvisHudOverlay()
+    overlay._last_integrity_check = 0
     
     mock_report = MagicMock()
     mock_report.is_valid = True
@@ -106,6 +111,12 @@ def test_hud_telemetry_wires_real_integrity_verify(qapp):
         overlay._refresh_telemetry()
         assert mock_integ.called
         assert overlay.telemetry.integrity_valid is True
+
+    # Confirm fail-closed on exception
+    overlay._last_integrity_check = 0
+    with patch("core.integrity_monitor.IntegrityMonitor.verify_integrity", side_effect=RuntimeError("disk read failed")):
+        overlay._refresh_telemetry()
+        assert overlay.telemetry.integrity_valid is False
 
 
 def test_hud_telemetry_binds_mobile_server_and_agents(qapp):

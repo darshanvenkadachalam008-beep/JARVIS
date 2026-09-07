@@ -134,7 +134,7 @@ class HudTelemetry:
             "ADA": "IDLE", "TOM": "IDLE", "SCOUT": "IDLE", "NOVA": "IDLE",
         }
         self.system_state = "IDLE"
-        self.integrity_valid = True
+        self.integrity_valid = False
         self.uptime_str = "0h 0m"
         self.thread_count = 1
 
@@ -491,7 +491,7 @@ class JarvisHudOverlay(QMainWindow):
                 report = IntegrityMonitor().verify_integrity()
                 t.integrity_valid = report.is_valid
             except Exception:
-                t.integrity_valid = True
+                t.integrity_valid = False
 
         # Invalidate full canvas on the 1s clock/telemetry update
         self.update()
