@@ -42,8 +42,9 @@ def load_auth_token() -> str:
 def generate_pairing_payload(lan_ip: str | None = None) -> dict:
     ip = lan_ip or get_lan_ip()
     token = load_auth_token()
-    from mobile_server import _get_or_create_tls_cert
+    from mobile_server import _get_or_create_tls_cert, open_pairing_window
     _, _, fingerprint = _get_or_create_tls_cert()
+    open_pairing_window(duration_sec=300)
     return {
         "ip": ip,
         "port": 8081,

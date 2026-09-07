@@ -629,8 +629,9 @@ def _record_failed_auth(ip: str, detail: str = "bad token"):
         _broadcast_conn_event("blocked", ip, f"{_BLOCK_SEC}s block")
 
 
-# ── Paired IP Allowlist Cache ────────────────────────────────────────────────
+# ── Paired IP Allowlist Cache & Pairing Window ───────────────────────────────
 _PAIRED_IPS_PATH = BASE_DIR / "config" / ".paired_ips.json"
+_PAIRING_WINDOW_FILE = BASE_DIR / "config" / ".pairing_window"
 _PAIRED_IPS: set = set()
 
 
@@ -658,6 +659,29 @@ def _save_paired_ip(ip: str) -> None:
         _PAIRED_IPS_PATH.write_text(json.dumps(sorted(list(_PAIRED_IPS)), indent=2), encoding="utf-8")
     except Exception as e:
         log.warning(f"Could not save paired IP: {e}")
+
+
+def open_pairing_window(duration_sec: int = 300) -> float:
+    """Opens a time-boxed window allowing new device IPs to register with a valid token."""
+    expires_at = time.time() + duration_sec
+    try:
+        _PAIRING_WINDOW_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _PAIRING_WINDOW_FILE.write_text(str(expires_at), encoding="utf-8")
+        print(f"[Mobile] ⏱️ Pairing window opened for {duration_sec}s (expires at {time.strftime('%H:%M:%S', time.localtime(expires_at))})")
+    except Exception as e:
+        log.warning(f"Could not write pairing window timestamp: {e}")
+    return expires_at
+
+
+def is_pairing_window_open() -> bool:
+    """Checks if the pairing window is currently active."""
+    try:
+        if _PAIRING_WINDOW_FILE.exists():
+            expires_at = float(_PAIRING_WINDOW_FILE.read_text(encoding="utf-8").strip())
+            return time.time() < expires_at
+    except Exception:
+        pass
+    return False
 
 
 _load_paired_ips()
@@ -838,20 +862,29 @@ class _WSHub:
                     token = str(msg.get("data", "")).strip()
                     if token and secrets.compare_digest(token, MOBILE_AUTH_TOKEN):
                         is_already_paired = ip in _PAIRED_IPS
-                        is_first_pairing = len(_PAIRED_IPS - {"127.0.0.1", "::1"}) == 0
-                        _save_paired_ip(ip)
-                        authed = True
-                        if is_already_paired:
-                            print(f"[Mobile] 🔓 Known paired IP {ip} authenticated")
-                        elif is_first_pairing:
-                            print(f"[Mobile] 📱 Initial companion pairing recorded for IP {ip}")
-                        else:
-                            print(f"[Mobile] 📱 New companion IP {ip} authenticated and registered to paired allowlist")
+                        window_active = is_pairing_window_open()
 
-                        await websocket.send(json.dumps({
-                            "type": "sys", "data": "JARVIS Mobile connected. Ready, sir."
-                        }))
-                        _broadcast_conn_event("auth_ok", ip)
+                        if is_already_paired or window_active:
+                            _save_paired_ip(ip)
+                            authed = True
+                            if is_already_paired:
+                                print(f"[Mobile] 🔓 Known paired IP {ip} authenticated")
+                            else:
+                                print(f"[Mobile] 📱 New companion IP {ip} registered to allowlist during active pairing window")
+
+                            await websocket.send(json.dumps({
+                                "type": "sys", "data": "JARVIS Mobile connected. Ready, sir."
+                            }))
+                            _broadcast_conn_event("auth_ok", ip)
+                        else:
+                            _record_failed_auth(ip, detail="unpaired IP outside pairing window")
+                            print(f"[Mobile] ⛔ Rejected un-paired IP {ip} (valid token, but pairing window closed)")
+                            await websocket.send(json.dumps({
+                                "type": "sys",
+                                "data": "Auth failed: Device IP not in paired allowlist. Re-scan the pairing QR on your PC to authorize."
+                            }))
+                            await websocket.close(code=4403, reason="unpaired_device_ip")
+                            break
                     else:
                         _record_failed_auth(ip)
                         print(f"[Mobile] ⛔ Bad auth token from {ip}")
@@ -2161,6 +2194,8 @@ class MobileServer:
 
     def start(self):
         _ensure_windows_firewall_rule()
+        if len(_PAIRED_IPS - {"127.0.0.1", "::1"}) == 0:
+            open_pairing_window(600)
         _HTTPHandler.pc_ip = self._pc_ip
         _HTTPHandler.firebase_config = _load_firebase_web_config()
         self._http = HTTPServer(("0.0.0.0", HTTP_PORT), _HTTPHandler)

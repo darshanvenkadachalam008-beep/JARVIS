@@ -37,3 +37,23 @@ def test_paired_ip_allowlist_caching(tmp_path, monkeypatch):
     reloaded = mobile_server._load_paired_ips()
     assert "192.168.1.150" in reloaded
     assert "127.0.0.1" in reloaded
+
+
+def test_pairing_window_lifecycle(tmp_path, monkeypatch):
+    """Verifies opening, validity, and expiration of the time-boxed pairing window."""
+    import mobile_server
+    import time
+    fake_window_file = tmp_path / ".pairing_window"
+    monkeypatch.setattr(mobile_server, "_PAIRING_WINDOW_FILE", fake_window_file)
+
+    assert not mobile_server.is_pairing_window_open()
+
+    # Open 2-second window
+    expires_at = mobile_server.open_pairing_window(duration_sec=2)
+    assert expires_at > time.time()
+    assert mobile_server.is_pairing_window_open()
+
+    # Wait for expiration
+    time.sleep(2.1)
+    assert not mobile_server.is_pairing_window_open()
+
