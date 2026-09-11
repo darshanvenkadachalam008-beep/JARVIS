@@ -34,13 +34,15 @@ _ROUTING: dict[str, list[str]] = {
                "content", "draft", "write a post", "social media"],
     "Nova":  ["analytics", "youtube", "views", "meta", "ads", "app store",
                "downloads", "metrics", "statistics", "performance"],
+    "Sentinel": ["security", "defense", "lockdown", "anomaly", "threat", "audit chain",
+                 "intruder", "lock screen", "elevated", "deescalate"],
 }
 
 
 class AgentManager:
     """
     Singleton-friendly manager.
-    Registers all four agents and routes tasks by keyword or explicit name.
+    Registers all agents and routes tasks by keyword or explicit name.
     Reuses the existing TaskQueue for async dispatch.
     """
 
@@ -48,11 +50,16 @@ class AgentManager:
         self._agents: dict[str, BaseAgent] = {}
         self._lock   = threading.Lock()
         self._progress_cb: Callable[[str, float], None] | None = None
-        self._pool   = ThreadPoolExecutor(max_workers=4, thread_name_prefix="Agent")
+        self._pool   = ThreadPoolExecutor(max_workers=5, thread_name_prefix="Agent")
 
         # Register all agents
         for agent in [TomAgent(), ScoutAgent(), AdaAgent(), NovaAgent()]:
             self.register(agent)
+        try:
+            from agents.sentinel_agent import SentinelAgent
+            self.register(SentinelAgent())
+        except Exception:
+            pass
 
     # ── Registration ────────────────────────────────────────────────────────
 

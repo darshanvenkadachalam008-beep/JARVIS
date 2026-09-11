@@ -421,6 +421,10 @@ class AuditLogger:
             self.sink.emit(entry)
             return entry
 
+    def verify(self) -> Tuple[bool, int, Optional[str]]:
+        """Instance helper to verify current audit log against configured HMAC keys."""
+        return self.verify_chain(self.log_file, self.hmac_keys)
+
     @classmethod
     def verify_chain(
         cls,

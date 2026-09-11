@@ -11,6 +11,7 @@ class SentinelSettings(BaseModel):
     pbkdf2_iterations: int = 600_000
     lock_timeout_seconds: float = 3.0
     presence_token_ttl_seconds: int = 300  # 5 minutes
+    allow_network_isolation: bool = False
 
     @property
     def auth_dir(self) -> Path:
@@ -33,6 +34,12 @@ class SentinelSettings(BaseModel):
     @property
     def watchdog_dir(self) -> Path:
         p = self.base_dir / "watchdog"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def evidence_dir(self) -> Path:
+        p = self.base_dir / "evidence"
         p.mkdir(parents=True, exist_ok=True)
         return p
 
