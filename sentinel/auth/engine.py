@@ -1,6 +1,7 @@
 """Primary Authorization Engine and decorator guards for Sentinel."""
 
 import functools
+import threading
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any
 
@@ -41,6 +42,41 @@ class AuthorizationBlockedError(AuthorizationError):
 
 class AuthEngine:
     """Central engine providing tiered authorization and authentication services."""
+
+    _instance: Optional["AuthEngine"] = None
+    _instance_lock: threading.Lock = threading.Lock()
+
+    @classmethod
+    def get_instance(
+        cls,
+        auth_dir: Optional[Path] = None,
+        iterations: Optional[int] = None,
+        lock_timeout_seconds: Optional[float] = None,
+        event_sink: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+    ) -> "AuthEngine":
+        """
+        Thread-safe singleton accessor for process-wide AuthEngine.
+        """
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = cls(
+                    auth_dir=auth_dir,
+                    iterations=iterations,
+                    lock_timeout_seconds=lock_timeout_seconds,
+                    event_sink=event_sink,
+                )
+            elif event_sink is not None and cls._instance.event_sink is None:
+                cls._instance.event_sink = event_sink
+                cls._instance.lockout_manager.event_sink = event_sink
+                cls._instance.enrollment_manager.event_sink = event_sink
+                cls._instance.anomaly_detector.event_sink = event_sink
+            return cls._instance
+
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Resets the singleton instance (primarily for isolated test fixtures)."""
+        with cls._instance_lock:
+            cls._instance = None
 
     def __init__(
         self,

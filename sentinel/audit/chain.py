@@ -35,6 +35,40 @@ class AuditLogger:
     of log entries breaks cryptographic verification.
     """
 
+    _instance: Optional["AuditLogger"] = None
+    _instance_lock: threading.Lock = threading.Lock()
+
+    @classmethod
+    def get_instance(
+        cls,
+        audit_dir: Path | None = None,
+        hmac_key: Optional[bytes] = None,
+        sinks: Optional[List[AuditSink]] = None,
+        lock_timeout_seconds: float = 5.0,
+        verify_on_startup: bool = True,
+    ) -> "AuditLogger":
+        """
+        Thread-safe singleton accessor for process-wide AuditLogger.
+        Guarantees only one AuditLogger instance writes to the audit chain,
+        preventing race conditions and cryptographic chain corruption.
+        """
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = cls(
+                    audit_dir=audit_dir,
+                    hmac_key=hmac_key,
+                    sinks=sinks,
+                    lock_timeout_seconds=lock_timeout_seconds,
+                    verify_on_startup=verify_on_startup,
+                )
+            return cls._instance
+
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Resets the singleton instance (primarily for isolated test fixtures)."""
+        with cls._instance_lock:
+            cls._instance = None
+
     def __init__(
         self,
         audit_dir: Path | None = None,
@@ -420,6 +454,25 @@ class AuditLogger:
 
             self.sink.emit(entry)
             return entry
+
+    def read_all(self) -> List[AuditEntry]:
+        """
+        Reads and returns all AuditEntry records currently in the log file under FileLock.
+        """
+        entries: List[AuditEntry] = []
+        if not self.log_file.exists() or self.log_file.stat().st_size == 0:
+            return entries
+
+        with FileLock(str(self.lock_file), timeout=self.lock_timeout):
+            with open(self.log_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    stripped = line.strip()
+                    if stripped:
+                        try:
+                            entries.append(AuditEntry.model_validate(json.loads(stripped)))
+                        except Exception as e:
+                            logger.warning("Skipping unparseable audit line: %s", e)
+        return entries
 
     def verify(self) -> Tuple[bool, int, Optional[str]]:
         """Instance helper to verify current audit log against configured HMAC keys."""

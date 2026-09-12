@@ -57,7 +57,12 @@ class AgentManager:
             self.register(agent)
         try:
             from agents.sentinel_agent import SentinelAgent
-            self.register(SentinelAgent())
+            from sentinel.auth.engine import AuthEngine
+            from sentinel.audit.chain import AuditLogger
+            self.register(SentinelAgent(
+                auth_engine=AuthEngine.get_instance(),
+                audit_logger=AuditLogger.get_instance(),
+            ))
         except Exception:
             pass
 
@@ -68,6 +73,11 @@ class AgentManager:
         with self._lock:
             self._agents[agent.agent_name] = agent
         print(f"[AgentManager] ✅ Registered: {agent.agent_name}")
+
+    def get_agent(self, name: str) -> BaseAgent | None:
+        """Returns the registered agent with the given name, or None."""
+        with self._lock:
+            return self._agents.get(name)
 
     def set_progress_callback(self, cb: Callable[[str, float], None]) -> None:
         """UI registers here to receive (agent_name, pct) updates."""

@@ -1,4 +1,4 @@
-﻿"""
+"""
 SentinelAgent — Autonomous Cybersecurity Defense Agent for JARVIS.
 Subclasses BaseAgent and implements a fail-secure defense state machine:
 NORMAL → ELEVATED → DEFENSE → LOCKDOWN.
@@ -51,18 +51,18 @@ class SentinelAgent(BaseAgent):
         self._audit_logger = audit_logger
         self._anomaly_detector = anomaly_detector
 
-        # Lazily initialize dependencies if not provided
+        # Lazily initialize dependencies if not provided via singletons
         if self._auth_engine is None:
             try:
                 from sentinel.auth.engine import AuthEngine
-                self._auth_engine = AuthEngine(event_sink=self.on_event)
+                self._auth_engine = AuthEngine.get_instance(event_sink=self.on_event)
             except Exception as e:
                 logger.warning(f"[SentinelAgent] Could not initialize AuthEngine: {e}")
 
         if self._audit_logger is None:
             try:
                 from sentinel.audit.chain import AuditLogger
-                self._audit_logger = AuditLogger()
+                self._audit_logger = AuditLogger.get_instance()
             except Exception as e:
                 logger.warning(f"[SentinelAgent] Could not initialize AuditLogger: {e}")
 
@@ -162,46 +162,122 @@ class SentinelAgent(BaseAgent):
             return True
 
         elif new_state == SentinelState.DEFENSE:
+            action_failures = []
+
             # 1. Capture evidence locally (ZERO network dependencies)
-            evidence_path = capture_evidence(context_summary=f"DEFENSE mode entered: {reason}")
+            evidence_path = None
+            try:
+                evidence_path = capture_evidence(context_summary=f"DEFENSE mode entered: {reason}")
+            except Exception as e:
+                logger.error(f"[SentinelAgent] Action 'capture_evidence' failed during DEFENSE transition: {e}")
+                action_failures.append("capture_evidence")
+                self._log_audit(
+                    "sentinel_action_failed",
+                    details={"action": "capture_evidence", "error": str(e), "target_state": new_state.value},
+                )
 
             # 2. Alert owner via network while connectivity is still alive
-            alert_owner(f"Sentinel DEFENSE engaged: {reason}", evidence_path=evidence_path)
+            try:
+                alert_owner(f"Sentinel DEFENSE engaged: {reason}", evidence_path=evidence_path)
+            except Exception as e:
+                logger.error(f"[SentinelAgent] Action 'alert_owner' failed during DEFENSE transition: {e}")
+                action_failures.append("alert_owner")
+                self._log_audit(
+                    "sentinel_action_failed",
+                    details={"action": "alert_owner", "error": str(e), "target_state": new_state.value},
+                )
 
             # 3. Lock operating system session
-            lock_session()
+            try:
+                lock_session()
+            except Exception as e:
+                logger.error(f"[SentinelAgent] Action 'lock_session' failed during DEFENSE transition: {e}")
+                action_failures.append("lock_session")
+                self._log_audit(
+                    "sentinel_action_failed",
+                    details={"action": "lock_session", "error": str(e), "target_state": new_state.value},
+                )
 
-            # 4. Log tamper-evident audit event
+            # 4. Log tamper-evident audit event & commit state transition
+            ev_str = str(evidence_path) if evidence_path else None
             self._log_audit(
                 "sentinel_defense_mode_entered",
                 details={
                     "from_state": prev_state.value,
                     "to_state": new_state.value,
                     "reason": reason,
-                    "evidence_path": str(evidence_path),
+                    "evidence_path": ev_str,
+                    "action_failures": action_failures,
                 },
             )
             self.defense_state = SentinelState.DEFENSE
-            self._log(f"[Sentinel] 🛡️ State is now DEFENSE. Session locked. Evidence: {evidence_path.name}")
+            ev_name = evidence_path.name if evidence_path else "none"
+            self._log(f"[Sentinel] 🛡️ State is now DEFENSE. Session locked. Evidence: {ev_name}")
             return True
 
         elif new_state == SentinelState.LOCKDOWN:
+            action_failures = []
+
             # 1. Capture evidence locally
-            evidence_path = capture_evidence(context_summary=f"LOCKDOWN mode entered: {reason}")
+            evidence_path = None
+            try:
+                evidence_path = capture_evidence(context_summary=f"LOCKDOWN mode entered: {reason}")
+            except Exception as e:
+                logger.error(f"[SentinelAgent] Action 'capture_evidence' failed during LOCKDOWN transition: {e}")
+                action_failures.append("capture_evidence")
+                self._log_audit(
+                    "sentinel_action_failed",
+                    details={"action": "capture_evidence", "error": str(e), "target_state": new_state.value},
+                )
 
             # 2. Alert owner via network before potential isolation
-            alert_owner(f"Sentinel LOCKDOWN engaged: {reason}", evidence_path=evidence_path)
+            try:
+                alert_owner(f"Sentinel LOCKDOWN engaged: {reason}", evidence_path=evidence_path)
+            except Exception as e:
+                logger.error(f"[SentinelAgent] Action 'alert_owner' failed during LOCKDOWN transition: {e}")
+                action_failures.append("alert_owner")
+                self._log_audit(
+                    "sentinel_action_failed",
+                    details={"action": "alert_owner", "error": str(e), "target_state": new_state.value},
+                )
 
             # 3. Revoke all active tokens and sessions
-            revoked_count = revoke_active_tokens(self._auth_engine, mobile_hub=self.mobile_hub)
+            revoked_count = 0
+            try:
+                revoked_count = revoke_active_tokens(self._auth_engine, mobile_hub=self.mobile_hub)
+            except Exception as e:
+                logger.error(f"[SentinelAgent] Action 'revoke_active_tokens' failed during LOCKDOWN transition: {e}")
+                action_failures.append("revoke_active_tokens")
+                self._log_audit(
+                    "sentinel_action_failed",
+                    details={"action": "revoke_active_tokens", "error": str(e), "target_state": new_state.value},
+                )
 
             # 4. Lock session
-            lock_session()
+            try:
+                lock_session()
+            except Exception as e:
+                logger.error(f"[SentinelAgent] Action 'lock_session' failed during LOCKDOWN transition: {e}")
+                action_failures.append("lock_session")
+                self._log_audit(
+                    "sentinel_action_failed",
+                    details={"action": "lock_session", "error": str(e), "target_state": new_state.value},
+                )
 
             # 5. Apply network isolation (if enabled in settings)
-            isolation_applied = network_isolate(reason=f"LOCKDOWN: {reason}")
+            isolation_applied = False
+            try:
+                isolation_applied = network_isolate(reason=f"LOCKDOWN: {reason}")
+            except Exception as e:
+                logger.error(f"[SentinelAgent] Action 'network_isolate' failed during LOCKDOWN transition: {e}")
+                action_failures.append("network_isolate")
+                self._log_audit(
+                    "sentinel_action_failed",
+                    details={"action": "network_isolate", "error": str(e), "target_state": new_state.value},
+                )
 
-            # 6. Log tamper-evident audit event
+            # 6. Log tamper-evident audit event & commit state transition
+            ev_str = str(evidence_path) if evidence_path else None
             self._log_audit(
                 "sentinel_lockdown_entered",
                 details={
@@ -210,7 +286,8 @@ class SentinelAgent(BaseAgent):
                     "reason": reason,
                     "revoked_tokens": revoked_count,
                     "network_isolated": isolation_applied,
-                    "evidence_path": str(evidence_path),
+                    "evidence_path": ev_str,
+                    "action_failures": action_failures,
                 },
             )
             self.defense_state = SentinelState.LOCKDOWN
